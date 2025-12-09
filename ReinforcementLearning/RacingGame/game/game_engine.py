@@ -26,6 +26,7 @@ class RoadFighterGame:
         self.running = False
         self.game_over = False
         self.victory = False
+        self.end_reason = None  # 'collision', 'timeout', or 'victory'
         
         self.time_since_last_spawn = 0
         self.spawn_interval = 2.0
@@ -41,6 +42,7 @@ class RoadFighterGame:
         self.running = True
         self.game_over = False
         self.victory = False
+        self.end_reason = None
         self.time_since_last_spawn = 0
         self.spawn_interval = 2.0
         self.lane_marker_offset = 0
@@ -83,7 +85,8 @@ class RoadFighterGame:
             'distance': self.distance_traveled,
             'time_remaining': self.time_remaining,
             'score': self.score,
-            'victory': self.victory
+            'victory': self.victory,
+            'collision': collision_occurred
         }
         
         return state, reward, done, info
@@ -118,9 +121,11 @@ class RoadFighterGame:
         if self.distance_traveled >= TARGET_DISTANCE:
             self.victory = True
             self.game_over = True
+            self.end_reason = 'victory'
         elif self.time_remaining <= 0:
             self.victory = False
             self.game_over = True
+            self.end_reason = 'timeout'
             
         return collision
     
@@ -305,9 +310,12 @@ class RoadFighterGame:
         
         for opp in self.opponents:
             if opp.active and player_rect.colliderect(opp.get_rect()):
-                self.player.velocity_y = max(PLAYER_MIN_SPEED, 
-                                            self.player.velocity_y - 50)
                 collision = True
+                # Game over on collision
+                self.game_over = True
+                self.victory = False
+                self.end_reason = 'collision'
+                break
                 
         return collision
                 
@@ -384,17 +392,29 @@ class RoadFighterGame:
         
         # Game over
         if self.game_over:
-            if self.victory:
-                msg = "VICTORY!"
-                color = (0, 255, 0)
-            else:
-                msg = "TIME'S UP!"
-                color = (255, 0, 0)
-                
             big_font = pygame.font.Font(None, 72)
-            msg_text = big_font.render(msg, True, color)
-            rect = msg_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2))
-            self.screen.blit(msg_text, rect)
+            medium_font = pygame.font.Font(None, 48)
+            
+            if self.end_reason == 'victory':
+                msg1 = "VICTORY!"
+                color = (0, 255, 0)
+            elif self.end_reason == 'collision':
+                msg1 = "COLLISION!"
+                color = (255, 0, 0)
+            else:  # timeout
+                msg1 = "TIME'S UP!"
+                color = (255, 165, 0)  # Orange
+            
+            # Main message
+            msg_text1 = big_font.render(msg1, True, color)
+            rect1 = msg_text1.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 40))
+            self.screen.blit(msg_text1, rect1)
+            
+            # GAME OVER text (unless victory)
+            if self.end_reason != 'victory':
+                msg_text2 = medium_font.render("GAME OVER", True, (255, 255, 255))
+                rect2 = msg_text2.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 40))
+                self.screen.blit(msg_text2, rect2)
             
     def run(self):
         """Main game loop"""
@@ -423,10 +443,15 @@ class RoadFighterGame:
             
             # Check if done
             if self.game_over:
-                # Show game over for 3 seconds
-                for _ in range(3 * FPS):
+                # Show game over message for 2 seconds then close
+                for _ in range(2 * FPS):
+                    for event in pygame.event.get():
+                        if event.type == pygame.QUIT:
+                            self.running = False
+                            break
                     self.render()
                     self.clock.tick(FPS)
+                # Close the game
                 self.running = False
                 
         pygame.quit()
