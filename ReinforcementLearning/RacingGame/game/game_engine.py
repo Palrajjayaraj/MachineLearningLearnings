@@ -37,6 +37,9 @@ class RoadFighterGame:
         self.spawn_interval = 2.0
         self.lane_marker_offset = 0
         
+        # Track last spawned car type to prevent consecutive yellow/red
+        self.last_spawned_type = None
+        
     def reset(self):
         """Reset game to starting state"""
         self.player = PlayerCar(PLAYER_START_X, PLAYER_Y)
@@ -56,6 +59,9 @@ class RoadFighterGame:
         self.green_cars_passed = 0
         self.yellow_cars_passed = 0
         self.red_cars_passed = 0
+        
+        # Reset last spawned type
+        self.last_spawned_type = None
         
     def step(self, left, right, brake):
         """
@@ -321,19 +327,20 @@ class RoadFighterGame:
                 if -400 < opp.y < 200:
                     return  # Don't spawn - too crowded
         
-        # Check if there are cars in adjacent lanes (for yellow/red car spawning)
-        # If yes, spawn green car to avoid visual overlap
-        has_nearby_cars = False
-        for opp in self.opponents:
-            if abs(opp.lane - lane) <= 1 and opp.y < 300 and opp.y > -200:
-                has_nearby_cars = True
-                break
+        # Force green car if last spawn was yellow or red
+        # This ensures green car separates yellow/red cars
+        force_green = (self.last_spawned_type in ['yellow', 'red'])
         
-        if has_nearby_cars:
-            # Force spawn green car to avoid zig-zag overlap
-            self.opponents.append(OpponentCar(lane, 0, 0, force_type='green'))
+        if force_green:
+            # Force green to separate yellow/red cars
+            new_car = OpponentCar(lane, 0, 0, force_type='green')
+            self.last_spawned_type = 'green'
         else:
-            self.opponents.append(OpponentCar(lane, 0, 0))
+            # Normal random spawn - maintains 5:3:1 ratio
+            new_car = OpponentCar(lane, 0, 0)
+            self.last_spawned_type = new_car.car_type
+        
+        self.opponents.append(new_car)
     
     def _spawn_blocking_pattern(self):
         """Spawn multiple cars to block straight-line driving"""
@@ -353,12 +360,24 @@ class RoadFighterGame:
             
             if lane_clear:
                 # HUGE vertical offset so cars are very staggered
-                # First car at 0, second at -300 (instead of -150)
+                # First car at 0, second at -300
                 vertical_offset = -i * 300
                 # Small horizontal variance
                 horizontal_variance = random.randint(-20, 20)
-                # Force green cars in blocking patterns to avoid overlap
-                self.opponents.append(OpponentCar(lane, vertical_offset, horizontal_variance, force_type='green'))
+                
+                # Force green car if last spawn was yellow or red
+                force_green = (self.last_spawned_type in ['yellow', 'red'])
+                
+                if force_green:
+                    # Force green to separate yellow/red cars
+                    new_car = OpponentCar(lane, vertical_offset, horizontal_variance, force_type='green')
+                    self.last_spawned_type = 'green'
+                else:
+                    # Normal random spawn - maintains natural 5:3:1 ratio
+                    new_car = OpponentCar(lane, vertical_offset, horizontal_variance)
+                    self.last_spawned_type = new_car.car_type
+                
+                self.opponents.append(new_car)
         
     def _check_collisions(self):
         """
