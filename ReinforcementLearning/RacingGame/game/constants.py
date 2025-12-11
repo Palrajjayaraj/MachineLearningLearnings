@@ -22,11 +22,13 @@ LANE_CENTERS = [
     ROAD_LEFT_EDGE + 3 * LANE_WIDTH + LANE_WIDTH // 2
 ]
 
-# Player car
-PLAYER_START_X = LANE_CENTERS[1]
-PLAYER_Y = 450
+# Player car dimensions (define before using in PLAYER_START_X)
 PLAYER_WIDTH = 60
 PLAYER_HEIGHT = 100
+
+# Player car position (centered in lane)
+PLAYER_START_X = LANE_CENTERS[1] - PLAYER_WIDTH // 2  # Center the car in lane
+PLAYER_Y = 450
 PLAYER_BASE_SPEED = 150.0
 PLAYER_MAX_SPEED = 300.0
 PLAYER_MIN_SPEED = 50.0

@@ -465,16 +465,27 @@ class RoadFighterGame:
             True, (255, 255, 255))
         self.screen.blit(speed_text, (10, 90))
         
-        # Speed multiplier (difficulty indicator)
+        # Opponent speed (calculated with current multiplier)
         multiplier = self._get_speed_multiplier()
+        base_opponent_speed = 120  # Base visual speed in pixels/sec
+        actual_opponent_speed = base_opponent_speed * multiplier
+        # Convert to approximate km/h for display (just for reference)
+        opponent_speed_display = int(180 * multiplier)  # 180 is base OPPONENT_SPEED
+        opponent_text = self.font.render(
+            f"Opponent Speed: {opponent_speed_display} km/h",
+            True, (255, 200, 100))  # Orange color
+        self.screen.blit(opponent_text, (10, 120))
+        
+        # Speed multiplier (difficulty indicator)
         if multiplier > 1.0:
             multiplier_text = self.font.render(
                 f"Difficulty: {multiplier}x",
                 True, (255, 100, 100))  # Red color for increased difficulty
-            self.screen.blit(multiplier_text, (10, 130))
+            self.screen.blit(multiplier_text, (10, 150))
         
         # Cars passed counter (total cars overtaken by player)
-        y_offset = 170 if multiplier > 1.0 else 130
+        # Adjust position based on whether difficulty multiplier is shown
+        y_offset = 190 if multiplier > 1.0 else 160
         
         green_text = self.font.render(f"Green passed: {self.green_cars_passed}", True, (0, 255, 0))
         self.screen.blit(green_text, (10, y_offset))

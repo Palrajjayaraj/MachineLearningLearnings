@@ -46,15 +46,19 @@ class PlayerCar:
                 self.x = self.start_x + (self.target_x - self.start_x) * self.lane_change_progress
         else:
             if left and not self.left_was_pressed:
+                # Move half lane left (50 pixels)
                 half_lane = LANE_WIDTH / 2.0
                 new_x = self.x - half_lane
+                # Check boundaries
                 if new_x >= ROAD_LEFT_EDGE:
                     self._start_lane_change(new_x)
                     
             if right and not self.right_was_pressed:
+                # Move half lane right (50 pixels)
                 half_lane = LANE_WIDTH / 2.0
                 new_x = self.x + half_lane
-                if new_x <= ROAD_RIGHT_EDGE - self.width:
+                # Check boundaries
+                if new_x + self.width <= ROAD_RIGHT_EDGE:
                     self._start_lane_change(new_x)
         
         self.left_was_pressed = left
@@ -159,6 +163,25 @@ class OpponentCar:
         self.movement_direction = random.choice([-1, 1])  # Random start direction
         self.zig_zag_progress = 0
         
+        # For yellow cars: pick ONE adjacent lane to alternate with
+        # This ensures yellow cars only move between 2 adjacent lanes
+        if self.car_type == 'yellow':
+            # Pick left or right adjacent lane
+            if self.start_lane == 0:
+                self.target_adjacent_lane = 1  # Can only go right
+            elif self.start_lane == NUM_LANES - 1:
+                self.target_adjacent_lane = NUM_LANES - 2  # Can only go left
+            else:
+                # Pick randomly: left or right adjacent
+                self.target_adjacent_lane = self.start_lane + random.choice([-1, 1])
+            
+            # IMPORTANT: Always start by moving TOWARDS target_adjacent_lane
+            # This ensures yellow car starts moving immediately upon spawn
+            # (spawns at start_lane center, so direction=1 means move to target_adjacent_lane)
+            self.movement_direction = 1
+        else:
+            self.target_adjacent_lane = None
+        
     def update(self, delta_time, player_speed, speed_multiplier=1.0):
         if not self.active:
             return
@@ -174,17 +197,18 @@ class OpponentCar:
             pass
             
         elif self.car_type == 'yellow':
-            # Yellow: Zig-zag fully between two lanes
+            # Yellow: Zig-zag between start_lane and target_adjacent_lane ONLY
+            # This ensures exactly 2 adjacent lanes, not 3
             self.movement_timer += delta_time
             if self.movement_timer >= 3.0:  # Change lanes every 3 seconds
                 self.movement_timer = 0
                 self.movement_direction *= -1
             
-            # Calculate target lane (start_lane or adjacent lane)
+            # Alternate between start_lane and target_adjacent_lane
             if self.movement_direction > 0:
-                target_lane = min(NUM_LANES - 1, self.start_lane + 1)
+                target_lane = self.target_adjacent_lane
             else:
-                target_lane = max(0, self.start_lane - 1)
+                target_lane = self.start_lane
             
             # Move towards target lane center
             target_x = LANE_CENTERS[target_lane] - self.width // 2
