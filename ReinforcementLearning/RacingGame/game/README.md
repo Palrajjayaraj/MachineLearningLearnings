@@ -26,7 +26,7 @@ python play.py
 - DOWN arrow: Brake
 - Car accelerates automatically
 
-**Goal:** Reach 3500m in 120 seconds
+**Goal:** Reach 9500m in 120 seconds
 
 ## Game Mechanics
 
@@ -44,7 +44,7 @@ python play.py
 - Spawn rate increases with distance
 
 ### Winning
-- Reach 3500m before time runs out
+- Reach 9500m before time runs out
 - Avoid collisions to maintain speed
 
 ## Code Structure

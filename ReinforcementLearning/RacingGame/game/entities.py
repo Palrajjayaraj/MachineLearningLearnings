@@ -159,13 +159,14 @@ class OpponentCar:
         self.movement_direction = random.choice([-1, 1])  # Random start direction
         self.zig_zag_progress = 0
         
-    def update(self, delta_time, player_speed):
+    def update(self, delta_time, player_speed, speed_multiplier=1.0):
         if not self.active:
             return
             
-        # Move vertically - fixed speed downward for visibility
-        # Opponents drive towards player at constant visual speed
-        self.y += 120 * delta_time  # Move down at 120 pixels/second
+        # Move vertically - fixed speed downward with multiplier for progressive difficulty
+        # Base speed is 120 pixels/second, multiplied by difficulty factor
+        base_speed = 120
+        self.y += base_speed * speed_multiplier * delta_time
         
         # Horizontal movement based on car type
         if self.car_type == 'green':

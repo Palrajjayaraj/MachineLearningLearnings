@@ -28,6 +28,11 @@ class RoadFighterGame:
         self.victory = False
         self.end_reason = None  # 'collision', 'timeout', or 'victory'
         
+        # Car passing counters
+        self.green_cars_passed = 0
+        self.yellow_cars_passed = 0
+        self.red_cars_passed = 0
+        
         self.time_since_last_spawn = 0
         self.spawn_interval = 2.0
         self.lane_marker_offset = 0
@@ -46,6 +51,11 @@ class RoadFighterGame:
         self.time_since_last_spawn = 0
         self.spawn_interval = 2.0
         self.lane_marker_offset = 0
+        
+        # Reset car passing counters
+        self.green_cars_passed = 0
+        self.yellow_cars_passed = 0
+        self.red_cars_passed = 0
         
     def step(self, left, right, brake):
         """
@@ -86,7 +96,11 @@ class RoadFighterGame:
             'time_remaining': self.time_remaining,
             'score': self.score,
             'victory': self.victory,
-            'collision': collision_occurred
+            'collision': collision_occurred,
+            'green_cars_passed': self.green_cars_passed,
+            'yellow_cars_passed': self.yellow_cars_passed,
+            'red_cars_passed': self.red_cars_passed,
+            'total_cars_passed': self.green_cars_passed + self.yellow_cars_passed + self.red_cars_passed
         }
         
         return state, reward, done, info
@@ -107,9 +121,32 @@ class RoadFighterGame:
         # Spawn opponents
         self._update_spawning(delta_time)
         
-        # Update opponents
+        # Get current speed multiplier for progressive difficulty
+        speed_multiplier = self._get_speed_multiplier()
+        
+        # Update opponents with speed multiplier and track cars passed
         for opp in self.opponents:
-            opp.update(delta_time, self.player.velocity_y)
+            # Store position before update
+            old_y = opp.y
+            
+            # Update opponent position
+            opp.update(delta_time, self.player.velocity_y, speed_multiplier)
+            
+            # Check if car crossed the player position (we passed it)
+            # Player is at y=450, opponents move from negative y to positive y
+            # If old_y was above player and new y is at or below player, we passed it
+            if old_y < self.player.y and opp.y >= self.player.y:
+                # Check if we haven't counted this car yet
+                if not hasattr(opp, 'passed_counted') or not opp.passed_counted:
+                    opp.passed_counted = True
+                    
+                    # Increment appropriate counter based on car type
+                    if opp.car_type == 'green':
+                        self.green_cars_passed += 1
+                    elif opp.car_type == 'yellow':
+                        self.yellow_cars_passed += 1
+                    elif opp.car_type == 'red':
+                        self.red_cars_passed += 1
         
         # Remove inactive opponents
         self.opponents = [opp for opp in self.opponents if opp.active]
@@ -230,6 +267,29 @@ class RoadFighterGame:
         
         return reward
             
+    def _get_speed_multiplier(self):
+        """
+        Calculate speed multiplier based on elapsed time
+        Progressive difficulty scaling
+        
+        Returns:
+            multiplier: Float (1.0 to 2.0)
+        """
+        elapsed_time = RACE_TIME_LIMIT - self.time_remaining
+        
+        if elapsed_time < 30:
+            return 1.0   # 0-30s: Normal speed
+        elif elapsed_time < 60:
+            return 1.2   # 30-60s: 1.2x speed
+        elif elapsed_time < 80:
+            return 1.4   # 60-80s: 1.4x speed
+        elif elapsed_time < 100:
+            return 1.6   # 80-100s: 1.6x speed
+        elif elapsed_time < 120:
+            return 1.8   # 100-120s: 1.8x speed
+        else:
+            return 2.0   # 120s+: 2.0x speed
+    
     def _update_spawning(self, delta_time):
         """Spawn new opponents"""
         self.time_since_last_spawn += delta_time
@@ -253,11 +313,13 @@ class RoadFighterGame:
         """Spawn a single car in a random lane"""
         lane = random.randint(0, NUM_LANES - 1)
         
-        # Check if lane is clear
+        # Strict checking - make sure NO cars are nearby in this lane
         for opp in self.opponents:
-            if opp.lane == lane and opp.y < 200:
-                if opp.y > -100:
-                    return  # Lane occupied
+            # Check if any car in this lane is too close
+            if opp.lane == lane:
+                # If car is anywhere near spawn area (from -400 to +200 pixels)
+                if -400 < opp.y < 200:
+                    return  # Don't spawn - too crowded
         
         # Check if there are cars in adjacent lanes (for yellow/red car spawning)
         # If yes, spawn green car to avoid visual overlap
@@ -383,6 +445,31 @@ class RoadFighterGame:
             f"Speed: {int(self.player.velocity_y)} km/h",
             True, (255, 255, 255))
         self.screen.blit(speed_text, (10, 90))
+        
+        # Speed multiplier (difficulty indicator)
+        multiplier = self._get_speed_multiplier()
+        if multiplier > 1.0:
+            multiplier_text = self.font.render(
+                f"Difficulty: {multiplier}x",
+                True, (255, 100, 100))  # Red color for increased difficulty
+            self.screen.blit(multiplier_text, (10, 130))
+        
+        # Cars passed counter (total cars overtaken by player)
+        y_offset = 170 if multiplier > 1.0 else 130
+        
+        green_text = self.font.render(f"Green passed: {self.green_cars_passed}", True, (0, 255, 0))
+        self.screen.blit(green_text, (10, y_offset))
+        
+        yellow_text = self.font.render(f"Yellow passed: {self.yellow_cars_passed}", True, (255, 255, 0))
+        self.screen.blit(yellow_text, (10, y_offset + 30))
+        
+        red_text = self.font.render(f"Red passed: {self.red_cars_passed}", True, (255, 100, 100))
+        self.screen.blit(red_text, (10, y_offset + 60))
+        
+        # Total cars passed
+        total_passed = self.green_cars_passed + self.yellow_cars_passed + self.red_cars_passed
+        total_text = self.font.render(f"Total passed: {total_passed}", True, (255, 255, 255))
+        self.screen.blit(total_text, (10, y_offset + 100))
         
         # Score
         score_text = self.font.render(
