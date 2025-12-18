@@ -256,10 +256,40 @@ class OpponentCar:
         if not self.active:
             return
             
+        # Car body
         pygame.draw.rect(screen, self.color,
                         (int(self.x), int(self.y), self.width, self.height))
         pygame.draw.rect(screen, (255, 255, 255),
                         (int(self.x), int(self.y), self.width, self.height), 2)
+        
+        # Windshield
         pygame.draw.rect(screen, (150, 200, 255),
                         (int(self.x) + 5, int(self.y) + 5,
                          self.width - 10, self.height // 4))
+        
+        # Add blinkers for yellow and red cars to show movement direction
+        if self.car_type in ['yellow', 'red']:
+            # Blink timer - use movement_timer for animation
+            blink_on = int(self.movement_timer * 3) % 2 == 0  # Blink 3 times per second
+            
+            if blink_on:
+                # Yellow cars get red blinkers, red cars get yellow blinkers
+                if self.car_type == 'yellow':
+                    blinker_color = (255, 0, 0)  # Red blinkers for yellow cars
+                else:  # red car
+                    blinker_color = (255, 255, 0)  # Yellow blinkers for red cars
+                
+                blinker_size = 6
+                back_y = int(self.y) + self.height - 10  # Position at back of car
+                
+                # Show left blinker if moving left
+                if self.movement_direction < 0:
+                    # Left blinker at back
+                    pygame.draw.circle(screen, blinker_color,
+                                     (int(self.x) + 10, back_y), blinker_size)
+                
+                # Show right blinker if moving right
+                elif self.movement_direction > 0:
+                    # Right blinker at back
+                    pygame.draw.circle(screen, blinker_color,
+                                     (int(self.x) + self.width - 10, back_y), blinker_size)
