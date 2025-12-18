@@ -34,11 +34,17 @@ class RoadFighterGame:
         self.red_cars_passed = 0
         
         self.time_since_last_spawn = 0
-        self.spawn_interval = 2.0
+        self.spawn_interval = 2.33  # 280px spacing = 180px gap (1.8 car lengths)
         self.lane_marker_offset = 0
         
         # Track last spawned car type to prevent consecutive yellow/red
         self.last_spawned_type = None
+        self.last_spawned_lane = None  # Track lane of last red car
+        self.consecutive_same_type = 0  # Track consecutive spawns of same type
+        
+        # Lane camping prevention
+        self.player_current_lane_cars_passed = 0
+        self.last_player_lane = None
         
     def reset(self):
         """Reset game to starting state"""
@@ -52,7 +58,7 @@ class RoadFighterGame:
         self.victory = False
         self.end_reason = None
         self.time_since_last_spawn = 0
-        self.spawn_interval = 2.0
+        self.spawn_interval = 2.33  # 280px spacing = 180px gap (1.8 car lengths)
         self.lane_marker_offset = 0
         
         # Reset car passing counters
@@ -62,6 +68,12 @@ class RoadFighterGame:
         
         # Reset last spawned type
         self.last_spawned_type = None
+        self.last_spawned_lane = None
+        self.consecutive_same_type = 0
+        
+        # Reset lane camping prevention
+        self.player_current_lane_cars_passed = 0
+        self.last_player_lane = None
         
     def step(self, left, right, brake):
         """
@@ -145,6 +157,20 @@ class RoadFighterGame:
                 # Check if we haven't counted this car yet
                 if not hasattr(opp, 'passed_counted') or not opp.passed_counted:
                     opp.passed_counted = True
+                    
+                    # Track lane camping (staying in same lane too long)
+                    current_player_lane = self.player.current_lane
+                    if self.last_player_lane is None:
+                        # First car - initialize
+                        self.last_player_lane = current_player_lane
+                        self.player_current_lane_cars_passed = 1
+                    elif self.last_player_lane == current_player_lane:
+                        # Same lane - increment counter
+                        self.player_current_lane_cars_passed += 1
+                    else:
+                        # Changed lanes - reset
+                        self.player_current_lane_cars_passed = 1
+                        self.last_player_lane = current_player_lane
                     
                     # Increment appropriate counter based on car type
                     if opp.car_type == 'green':
@@ -299,85 +325,172 @@ class RoadFighterGame:
     def _update_spawning(self, delta_time):
         """Spawn new opponents"""
         self.time_since_last_spawn += delta_time
-        # Slower spawn interval - 2 seconds between spawns
-        self.spawn_interval = 2.0
         
-        if self.time_since_last_spawn >= self.spawn_interval:
-            self._spawn_opponent()
-            self.time_since_last_spawn = 0
+        # Adjust spawn interval based on speed multiplier to maintain consistent spacing
+        # At higher speeds, opponents move faster, so we need to spawn less frequently
+        # to maintain 1.8 car lengths (180px) gap
+        # Formula: interval = 280px / (120 px/s * multiplier) = 2.33 / multiplier
+        speed_multiplier = self._get_speed_multiplier()
+        adjusted_interval = self.spawn_interval / speed_multiplier
+        
+        if self.time_since_last_spawn >= adjusted_interval:
+            # Try to spawn - only reset timer if successful
+            spawned = self._spawn_opponent()
+            if spawned:
+                self.time_since_last_spawn = 0
             
     def _spawn_opponent(self):
-        """Spawn opponents in patterns to prevent straight-line driving"""
+        """Spawn opponents in patterns to prevent straight-line driving
+        
+        Returns:
+            bool: True if a car was spawned, False otherwise
+        """
         
         # Only 15% chance to spawn blocking pattern (reduced from 30%)
         if random.random() < 0.15:
-            self._spawn_blocking_pattern()
+            return self._spawn_blocking_pattern()
         else:
-            self._spawn_single_car()
+            return self._spawn_single_car()
     
     def _spawn_single_car(self):
-        """Spawn a single car in a random lane"""
-        lane = random.randint(0, NUM_LANES - 1)
+        """Spawn a single car in a random lane
         
-        # Strict checking - make sure NO cars are nearby in this lane
-        for opp in self.opponents:
-            # Check if any car in this lane is too close
-            if opp.lane == lane:
-                # If car is anywhere near spawn area (from -400 to +200 pixels)
-                if -400 < opp.y < 200:
-                    return  # Don't spawn - too crowded
-        
-        # Force green car if last spawn was yellow or red
-        # This ensures green car separates yellow/red cars
-        force_green = (self.last_spawned_type in ['yellow', 'red'])
-        
-        if force_green:
-            # Force green to separate yellow/red cars
-            new_car = OpponentCar(lane, 0, 0, force_type='green')
-            self.last_spawned_type = 'green'
+        Returns:
+            bool: True if spawned successfully, False otherwise
+        """
+        # Lane camping prevention: if player stayed in same lane for 2+ opponents, 
+        # spawn an obstruction in that lane
+        if self.player_current_lane_cars_passed >= 2 and self.last_player_lane is not None:
+            # Validate lane is within bounds
+            lane = max(0, min(NUM_LANES - 1, self.last_player_lane))
+            self.player_current_lane_cars_passed = 0  # Reset counter
         else:
-            # Normal random spawn - maintains 5:3:1 ratio
+            lane = random.randint(0, NUM_LANES - 1)
+        
+        # CRITICAL FIX: Check PHYSICAL OVERLAP, not just lane property
+        # Yellow/red cars change lanes, so opp.lane != physical position
+        # min_spacing ensures proper gap between cars
+        # Formula: gap = min_spacing - car_height = 300 - 100 = 200px (2 car lengths)
+        min_spacing = OPPONENT_MIN_SPACING  # Ensures 2 car lengths gap
+        spawn_y = -100  # Where new car will spawn
+        
+        # Check against ALL opponents for vertical overlap
+        # RED CARS move across ALL lanes, so we can't rely on horizontal checks
+        # Simply check if any car is within min_spacing vertically
+        for opp in self.opponents:
+            vertical_distance = abs(opp.y - spawn_y)
+            if vertical_distance < min_spacing:
+                return False  # Too close vertically - don't spawn
+        
+        # Red car horizontal spacing: check BEFORE creating car
+        # Need to preview car type WITHOUT consuming random state
+        if self.last_spawned_type == 'red' and self.last_spawned_lane is not None:
+            # Save random state, create preview car, restore state
+            saved_state = random.getstate()
+            preview_car = OpponentCar(lane, 0, 0)
+            will_be_red = (preview_car.car_type == 'red')
+            random.setstate(saved_state)  # Restore so next OpponentCar gets same random
+            
+            if will_be_red:
+                # Both current and next are red - ensure 2 lanes apart
+                lane_distance = abs(lane - self.last_spawned_lane)
+                if lane_distance < 2:
+                    # Too close - pick opposite side
+                    if self.last_spawned_lane <= 1:
+                        lane = random.choice([2, 3])
+                    else:
+                        lane = random.choice([0, 1])
+        
+        # Prevent more than 2 consecutive red or yellow cars
+        # If we've had 2 consecutive of same type, force green
+        force_green = False
+        if self.consecutive_same_type >= 2 and self.last_spawned_type in ['red', 'yellow']:
+            force_green = True
+        
+        # Random spawn - maintains 5:3:2 ratio (green:yellow:red)
+        if force_green:
+            new_car = OpponentCar(lane, 0, 0, force_type='green')
+        else:
             new_car = OpponentCar(lane, 0, 0)
-            self.last_spawned_type = new_car.car_type
+        
+        # Update consecutive counter
+        if new_car.car_type == self.last_spawned_type:
+            self.consecutive_same_type += 1
+        else:
+            self.consecutive_same_type = 1
+        
+        self.last_spawned_type = new_car.car_type
+        if new_car.car_type == 'red':
+            self.last_spawned_lane = lane
         
         self.opponents.append(new_car)
+        return True  # Successfully spawned
     
     def _spawn_blocking_pattern(self):
-        """Spawn multiple cars to block straight-line driving"""
-        # Only spawn 2 cars (not 3) with huge vertical spacing
+        """Spawn multiple cars to block straight-line driving
+        
+        Returns:
+            bool: True if at least one car was spawned, False otherwise
+        """
+        # Only spawn 2 cars with HUGE vertical spacing
+        # CRITICAL: Never spawn in adjacent lanes - always leave gaps for player to escape
         num_cars = 2
         
-        # Always leave at least 2 lanes open
-        lanes_to_spawn = random.sample(range(NUM_LANES), num_cars)
+        # Select non-adjacent lanes only (e.g., lanes 0 and 2, or 1 and 3)
+        # This ensures player always has escape routes
+        possible_lane_pairs = [
+            [0, 2],  # Lanes 0 and 2 (lane 1 open between them)
+            [0, 3],  # Lanes 0 and 3 (lanes 1,2 open)
+            [1, 3],  # Lanes 1 and 3 (lane 2 open between them)
+        ]
+        lanes_to_spawn = random.choice(possible_lane_pairs)
+        
+        # Track cars spawned in THIS pattern to check against each other
+        pattern_cars = []
+        any_spawned = False
         
         for i, lane in enumerate(lanes_to_spawn):
-            # Check if lane is clear
+            # Calculate spawn position for this car
+            # Consistent spacing with single car spawns: 280px apart
+            spawn_y = -100 - (i * 280)  # First at -100, second at -380
+            min_spacing = OPPONENT_MIN_SPACING  # Ensures 2 car lengths gap
+            
+            # Calculate spawn lane boundaries
+            lane_left = ROAD_LEFT_EDGE + lane * LANE_WIDTH
+            lane_right = lane_left + LANE_WIDTH
+            
+            
             lane_clear = True
+            
+            # Check against existing opponents - vertical distance only
+            # Red cars can move anywhere horizontally, so only check vertical spacing
             for opp in self.opponents:
-                if opp.lane == lane and opp.y < 300 and opp.y > -300:
+                vertical_distance = abs(opp.y - spawn_y)
+                if vertical_distance < min_spacing:
+                    lane_clear = False
+                    break
+            
+            # ALSO check against cars we just spawned in this pattern
+            for pattern_car in pattern_cars:
+                vertical_distance = abs(pattern_car.y - spawn_y)
+                if vertical_distance < min_spacing:
                     lane_clear = False
                     break
             
             if lane_clear:
-                # HUGE vertical offset so cars are very staggered
-                # First car at 0, second at -300
-                vertical_offset = -i * 300
-                # Small horizontal variance
-                horizontal_variance = random.randint(-20, 20)
+                # Consistent vertical offset - 280px apart for 1.8 car length gap
+                vertical_offset = -(i * 280)
+                horizontal_variance = 0  # No variance - keep cars centered in lanes
                 
-                # Force green car if last spawn was yellow or red
-                force_green = (self.last_spawned_type in ['yellow', 'red'])
-                
-                if force_green:
-                    # Force green to separate yellow/red cars
-                    new_car = OpponentCar(lane, vertical_offset, horizontal_variance, force_type='green')
-                    self.last_spawned_type = 'green'
-                else:
-                    # Normal random spawn - maintains natural 5:3:1 ratio
-                    new_car = OpponentCar(lane, vertical_offset, horizontal_variance)
-                    self.last_spawned_type = new_car.car_type
+                # Random spawn - maintains natural 5:3:2 ratio
+                new_car = OpponentCar(lane, vertical_offset, horizontal_variance)
+                self.last_spawned_type = new_car.car_type
                 
                 self.opponents.append(new_car)
+                pattern_cars.append(new_car)  # Track for checking against next car in pattern
+                any_spawned = True
+        
+        return any_spawned
         
     def _check_collisions(self):
         """
@@ -444,68 +557,93 @@ class RoadFighterGame:
         self.lane_marker_offset += self.player.velocity_y / 20
         if self.lane_marker_offset > LANE_MARKER_HEIGHT + LANE_MARKER_GAP:
             self.lane_marker_offset = 0
+    
+    def _draw_text_with_bg(self, text, color, x, y):
+        """Draw text with semi-transparent background for better visibility"""
+        text_surface = self.font.render(text, True, color)
+        text_rect = text_surface.get_rect()
+        text_rect.topleft = (x, y)
+        
+        # Draw semi-transparent black background
+        bg_rect = text_rect.inflate(10, 6)  # Add padding
+        bg_surface = pygame.Surface((bg_rect.width, bg_rect.height))
+        bg_surface.set_alpha(180)  # Semi-transparent (0=transparent, 255=opaque)
+        bg_surface.fill((0, 0, 0))  # Black background
+        self.screen.blit(bg_surface, bg_rect.topleft)
+        
+        # Draw text on top
+        self.screen.blit(text_surface, text_rect)
+        
+        return text_rect.height  # Return height for spacing calculations
             
     def _draw_hud(self):
-        """Draw heads-up display"""
+        """Draw heads-up display with semi-transparent backgrounds"""
+        # HUD on RIGHT side - completely off the track (road ends at x=550)
+        hud_x = 570  # Right side, past the road edge
+        
         # Distance
-        dist_text = self.font.render(
+        self._draw_text_with_bg(
             f"Distance: {int(self.distance_traveled)}m / {int(TARGET_DISTANCE)}m",
-            True, (255, 255, 255))
-        self.screen.blit(dist_text, (10, 10))
+            (255, 255, 255), hud_x, 10)
         
         # Time
-        time_text = self.font.render(
+        self._draw_text_with_bg(
             f"Time: {int(self.time_remaining)}s",
-            True, (255, 255, 255))
-        self.screen.blit(time_text, (10, 50))
+            (255, 255, 255), hud_x, 50)
         
         # Speed
-        speed_text = self.font.render(
-            f"Speed: {int(self.player.velocity_y)} km/h",
-            True, (255, 255, 255))
-        self.screen.blit(speed_text, (10, 90))
+        self._draw_text_with_bg(
+            f"Player Speed: {int(self.player.velocity_y)} km/h",
+            (255, 255, 255), hud_x, 90)
         
-        # Opponent speed (calculated with current multiplier)
+        # Opponent speed (decreases with multiplier - correct physics!)
         multiplier = self._get_speed_multiplier()
-        base_opponent_speed = 120  # Base visual speed in pixels/sec
-        actual_opponent_speed = base_opponent_speed * multiplier
-        # Convert to approximate km/h for display (just for reference)
-        opponent_speed_display = int(180 * multiplier)  # 180 is base OPPONENT_SPEED
-        opponent_text = self.font.render(
-            f"Opponent Speed: {opponent_speed_display} km/h",
-            True, (255, 200, 100))  # Orange color
-        self.screen.blit(opponent_text, (10, 120))
+        # As difficulty increases, opponents go SLOWER forward (not faster)
+        # This creates larger speed difference = faster overtaking visual
+        opponent_forward_speed = int(OPPONENT_SPEED / multiplier)
+        self._draw_text_with_bg(
+            f"Opponent Speed: {opponent_forward_speed} km/h",
+            (255, 200, 100), hud_x, 130)
+        
+        # Speed difference (relative speed - how fast you're overtaking)
+        speed_difference = int(self.player.velocity_y - opponent_forward_speed)
+        diff_color = (0, 255, 0) if speed_difference > 0 else (255, 100, 100)
+        self._draw_text_with_bg(
+            f"Overtaking Speed: +{speed_difference} km/h",
+            diff_color, hud_x, 170)
         
         # Speed multiplier (difficulty indicator)
         if multiplier > 1.0:
-            multiplier_text = self.font.render(
+            self._draw_text_with_bg(
                 f"Difficulty: {multiplier}x",
-                True, (255, 100, 100))  # Red color for increased difficulty
-            self.screen.blit(multiplier_text, (10, 150))
+                (255, 100, 100), hud_x, 210)
         
         # Cars passed counter (total cars overtaken by player)
         # Adjust position based on whether difficulty multiplier is shown
-        y_offset = 190 if multiplier > 1.0 else 160
+        y_offset = 260 if multiplier > 1.0 else 220
         
-        green_text = self.font.render(f"Green passed: {self.green_cars_passed}", True, (0, 255, 0))
-        self.screen.blit(green_text, (10, y_offset))
+        self._draw_text_with_bg(
+            f"Green Cars Passed: {self.green_cars_passed}",
+            (0, 255, 0), hud_x, y_offset)
         
-        yellow_text = self.font.render(f"Yellow passed: {self.yellow_cars_passed}", True, (255, 255, 0))
-        self.screen.blit(yellow_text, (10, y_offset + 30))
+        self._draw_text_with_bg(
+            f"Yellow Cars Passed: {self.yellow_cars_passed}",
+            (255, 255, 0), hud_x, y_offset + 40)
         
-        red_text = self.font.render(f"Red passed: {self.red_cars_passed}", True, (255, 100, 100))
-        self.screen.blit(red_text, (10, y_offset + 60))
+        self._draw_text_with_bg(
+            f"Red Cars Passed: {self.red_cars_passed}",
+            (255, 100, 100), hud_x, y_offset + 80)
         
         # Total cars passed
         total_passed = self.green_cars_passed + self.yellow_cars_passed + self.red_cars_passed
-        total_text = self.font.render(f"Total passed: {total_passed}", True, (255, 255, 255))
-        self.screen.blit(total_text, (10, y_offset + 100))
+        self._draw_text_with_bg(
+            f"Total Cars Passed: {total_passed}",
+            (255, 255, 255), hud_x, y_offset + 120)
         
-        # Score
-        score_text = self.font.render(
+        # Score (same position on right)
+        self._draw_text_with_bg(
             f"Score: {self.score}",
-            True, (255, 255, 255))
-        self.screen.blit(score_text, (SCREEN_WIDTH - 200, 10))
+            (255, 255, 255), hud_x, y_offset + 170)
         
         # Game over
         if self.game_over:

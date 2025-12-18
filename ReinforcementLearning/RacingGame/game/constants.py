@@ -3,8 +3,8 @@ Road Fighter - Game Constants
 """
 
 # Screen
-SCREEN_WIDTH = 800
-SCREEN_HEIGHT = 600
+SCREEN_WIDTH = 1100  # Expanded to show full HUD on right side with extra buffer
+SCREEN_HEIGHT = 800  # Increased for better vertical fit
 FPS = 60
 
 # Road
@@ -26,9 +26,9 @@ LANE_CENTERS = [
 PLAYER_WIDTH = 60
 PLAYER_HEIGHT = 100
 
-# Player car position (centered in lane)
+# Player car position (centered in lane, positioned at bottom with 0.5 car height gap)
 PLAYER_START_X = LANE_CENTERS[1] - PLAYER_WIDTH // 2  # Center the car in lane
-PLAYER_Y = 450
+PLAYER_Y = SCREEN_HEIGHT - PLAYER_HEIGHT - 50  # 50px gap = 0.5 car height from bottom
 PLAYER_BASE_SPEED = 150.0
 PLAYER_MAX_SPEED = 300.0
 PLAYER_MIN_SPEED = 50.0
@@ -43,12 +43,12 @@ TARGET_DISTANCE = 9500.0
 OPPONENT_WIDTH = 60
 OPPONENT_HEIGHT = 100
 OPPONENT_SPEED = 180.0
-OPPONENT_MIN_SPACING = 400.0
+OPPONENT_MIN_SPACING = 250.0  # Min check. Target: 280px spacing = 180px gap (1.8 car lengths)
 
-# Spawn probabilities
-GREEN_CAR_PROBABILITY = 0.556
-YELLOW_CAR_PROBABILITY = 0.333
-RED_CAR_PROBABILITY = 0.111
+# Spawn probabilities (5:3:2 ratio - Green:Yellow:Red)
+GREEN_CAR_PROBABILITY = 0.500
+YELLOW_CAR_PROBABILITY = 0.300
+RED_CAR_PROBABILITY = 0.200
 
 # Visual
 LANE_MARKER_HEIGHT = 40

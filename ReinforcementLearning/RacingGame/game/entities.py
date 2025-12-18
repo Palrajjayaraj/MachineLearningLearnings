@@ -26,10 +26,6 @@ class PlayerCar:
         self.lane_change_speed = 5.0
         self.current_lane = 1
         
-        # Key tracking
-        self.left_was_pressed = False
-        self.right_was_pressed = False
-        
     def update(self, delta_time, left, right, brake):
         """Update car state"""
         if not self.active:
@@ -45,7 +41,8 @@ class PlayerCar:
             else:
                 self.x = self.start_x + (self.target_x - self.start_x) * self.lane_change_progress
         else:
-            if left and not self.left_was_pressed:
+            # Allow continuous movement while holding keys
+            if left:
                 # Move half lane left (50 pixels)
                 half_lane = LANE_WIDTH / 2.0
                 new_x = self.x - half_lane
@@ -53,16 +50,13 @@ class PlayerCar:
                 if new_x >= ROAD_LEFT_EDGE:
                     self._start_lane_change(new_x)
                     
-            if right and not self.right_was_pressed:
+            elif right:  # Changed to elif to prevent simultaneous left+right
                 # Move half lane right (50 pixels)
                 half_lane = LANE_WIDTH / 2.0
                 new_x = self.x + half_lane
                 # Check boundaries
                 if new_x + self.width <= ROAD_RIGHT_EDGE:
                     self._start_lane_change(new_x)
-        
-        self.left_was_pressed = left
-        self.right_was_pressed = right
         
         # Speed
         if brake:
@@ -154,13 +148,12 @@ class OpponentCar:
                 self.color = COLOR_OPPONENT_RED
                 self.car_type = 'red'
         
-        # Red cars start at random x position for varied patterns
-        if self.car_type == 'red' and not force_type:
-            self.x = random.randint(ROAD_LEFT_EDGE, ROAD_RIGHT_EDGE - self.width)
+        # All cars start centered in their lane
+        # Red cars will move across all lanes during gameplay
+        # (No random initial position)
         
-        # Movement state for zig-zagging
+        # Movement state for zig-zagging  
         self.movement_timer = 0
-        self.movement_direction = random.choice([-1, 1])  # Random start direction
         self.zig_zag_progress = 0
         
         # For yellow cars: pick ONE adjacent lane to alternate with
@@ -177,9 +170,14 @@ class OpponentCar:
             
             # IMPORTANT: Always start by moving TOWARDS target_adjacent_lane
             # This ensures yellow car starts moving immediately upon spawn
-            # (spawns at start_lane center, so direction=1 means move to target_adjacent_lane)
             self.movement_direction = 1
+        elif self.car_type == 'red':
+            # Red cars start with random direction
+            self.movement_direction = random.choice([-1, 1])
+            self.target_adjacent_lane = None
         else:
+            # Green cars don't move horizontally
+            self.movement_direction = 0
             self.target_adjacent_lane = None
         
     def update(self, delta_time, player_speed, speed_multiplier=1.0):
@@ -198,7 +196,7 @@ class OpponentCar:
             
         elif self.car_type == 'yellow':
             # Yellow: Zig-zag between start_lane and target_adjacent_lane ONLY
-            # This ensures exactly 2 adjacent lanes, not 3
+            # Apply speed multiplier to horizontal movement too
             self.movement_timer += delta_time
             if self.movement_timer >= 3.0:  # Change lanes every 3 seconds
                 self.movement_timer = 0
@@ -210,22 +208,24 @@ class OpponentCar:
             else:
                 target_lane = self.start_lane
             
-            # Move towards target lane center
+            # Move towards target lane center with speed multiplier
             target_x = LANE_CENTERS[target_lane] - self.width // 2
             if abs(self.x - target_x) > 2:
+                horizontal_speed = 100 * speed_multiplier  # Increased from 60 for faster visible movement
                 if self.x < target_x:
-                    self.x += 60 * delta_time  # Move right
+                    self.x += horizontal_speed * delta_time  # Move right
                 else:
-                    self.x -= 60 * delta_time  # Move left
+                    self.x -= horizontal_speed * delta_time  # Move left
             else:
                 self.x = target_x  # Snap to center
             
         elif self.car_type == 'red':
-            # Red: Zig-zag across ALL 4 lanes
+            # Red: Zig-zag across ALL 4 lanes with speed multiplier
             self.movement_timer += delta_time
             
-            # Move continuously at constant speed
-            self.x += self.movement_direction * 70 * delta_time
+            # Move continuously at constant speed with multiplier
+            horizontal_speed = 70 * speed_multiplier  # Apply multiplier
+            self.x += self.movement_direction * horizontal_speed * delta_time
             
             # Check boundaries and reverse when reaching edges
             left_bound = ROAD_LEFT_EDGE
