@@ -196,11 +196,7 @@ class OpponentCar:
             
         elif self.car_type == 'yellow':
             # Yellow: Zig-zag between start_lane and target_adjacent_lane ONLY
-            # Apply speed multiplier to horizontal movement too
-            self.movement_timer += delta_time
-            if self.movement_timer >= 3.0:  # Change lanes every 3 seconds
-                self.movement_timer = 0
-                self.movement_direction *= -1
+            # Flip direction immediately when reaching target for fluid movement
             
             # Alternate between start_lane and target_adjacent_lane
             if self.movement_direction > 0:
@@ -217,7 +213,9 @@ class OpponentCar:
                 else:
                     self.x -= horizontal_speed * delta_time  # Move left
             else:
-                self.x = target_x  # Snap to center
+                # Reached target - snap to center and immediately flip direction for fluid movement
+                self.x = target_x
+                self.movement_direction *= -1  # Flip direction immediately
             
         elif self.car_type == 'red':
             # Red: Zig-zag across ALL 4 lanes with speed multiplier
