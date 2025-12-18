@@ -7,16 +7,27 @@ import random
 from constants import *
 
 
-class PlayerCar:
+class Car:
+    """Base class for all cars with common attributes and methods"""
+    
+    def __init__(self, x, y, width, height):
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.active = True
+    
+    def get_rect(self):
+        """Get collision rectangle"""
+        return pygame.Rect(int(self.x), int(self.y), self.width, self.height)
+
+
+class PlayerCar(Car):
     """Player-controlled car"""
     
     def __init__(self, x, y):
-        self.x = x
-        self.y = y
-        self.width = PLAYER_WIDTH
-        self.height = PLAYER_HEIGHT
+        super().__init__(x, y, PLAYER_WIDTH, PLAYER_HEIGHT)
         self.velocity_y = PLAYER_BASE_SPEED
-        self.active = True
         
         # Lane changing
         self.is_changing_lane = False
@@ -82,9 +93,6 @@ class PlayerCar:
                 self.current_lane = i
                 break
                 
-    def get_rect(self):
-        return pygame.Rect(int(self.x), int(self.y), self.width, self.height)
-        
     def render(self, screen):
         if not self.active:
             return
@@ -110,18 +118,19 @@ class PlayerCar:
             pygame.draw.rect(screen, (0, 0, 0), (*pos, wheel_w, wheel_h))
 
 
-class OpponentCar:
+class OpponentCar(Car):
     """AI opponent car with different behaviors"""
     
     def __init__(self, lane, y_offset=0, x_variance=0, force_type=None):
+        # Initialize base Car class with position and dimensions
+        x = LANE_CENTERS[lane] - OPPONENT_WIDTH // 2 + x_variance
+        y = -OPPONENT_HEIGHT + y_offset
+        super().__init__(x, y, OPPONENT_WIDTH, OPPONENT_HEIGHT)
+        
+        # Opponent-specific attributes
         self.lane = lane
         self.start_lane = lane
-        self.x = LANE_CENTERS[lane] - OPPONENT_WIDTH // 2 + x_variance
-        self.y = -OPPONENT_HEIGHT + y_offset  # Spawn at top edge of screen
-        self.width = OPPONENT_WIDTH
-        self.height = OPPONENT_HEIGHT
         self.speed = OPPONENT_SPEED
-        self.active = True
         
         # Choose color and behavior (or force a type)
         if force_type:
@@ -249,9 +258,6 @@ class OpponentCar:
         if self.y > SCREEN_HEIGHT + 100:
             self.active = False
             
-    def get_rect(self):
-        return pygame.Rect(int(self.x), int(self.y), self.width, self.height)
-        
     def render(self, screen):
         if not self.active:
             return
