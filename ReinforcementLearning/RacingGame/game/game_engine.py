@@ -47,6 +47,7 @@ class RoadFighterGame:
         # Lane camping prevention
         self.player_current_lane_cars_passed = 0
         self.last_player_lane = None
+        self.lane_camping_mode = False  # Track if player is camping in one lane
         
     def reset(self):
         """Reset game to starting state"""
@@ -78,6 +79,7 @@ class RoadFighterGame:
         # Reset lane camping prevention
         self.player_current_lane_cars_passed = 0
         self.last_player_lane = None
+        self.lane_camping_mode = False
         
     def step(self, left, right, brake):
         """
@@ -171,10 +173,14 @@ class RoadFighterGame:
                     elif self.last_player_lane == current_player_lane:
                         # Same lane - increment counter
                         self.player_current_lane_cars_passed += 1
+                        # Activate camping mode if stayed too long
+                        if self.player_current_lane_cars_passed >= 2:
+                            self.lane_camping_mode = True
                     else:
-                        # Changed lanes - reset
+                        # Changed lanes - reset and deactivate camping mode
                         self.player_current_lane_cars_passed = 1
                         self.last_player_lane = current_player_lane
+                        self.lane_camping_mode = False
                     
                     # Increment appropriate counter based on car type
                     if opp.car_type == 'green':
@@ -362,13 +368,13 @@ class RoadFighterGame:
         Returns:
             bool: True if spawned successfully, False otherwise
         """
-        # Lane camping prevention: if player stayed in same lane for 2+ opponents, 
-        # spawn an obstruction in that lane
-        if self.player_current_lane_cars_passed >= 2 and self.last_player_lane is not None:
-            # Validate lane is within bounds
+        # Lane camping prevention: Force cars into player's lane if they're camping
+        if self.lane_camping_mode and self.last_player_lane is not None:
+            # Player is camping - FORCE spawn in their lane to make them move
             lane = max(0, min(NUM_LANES - 1, self.last_player_lane))
-            self.player_current_lane_cars_passed = 0  # Reset counter
+            # Don't reset counter - keep forcing until they move!
         else:
+            # Normal random lane selection
             lane = random.randint(0, NUM_LANES - 1)
         
         # CRITICAL FIX: Check PHYSICAL OVERLAP, not just lane property
@@ -467,6 +473,14 @@ class RoadFighterGame:
             [1, 3],  # Lanes 1 and 3 (lane 2 open between them)
         ]
         lanes_to_spawn = random.choice(possible_lane_pairs)
+        
+        # Lane camping prevention: Override pattern if player is camping
+        if self.lane_camping_mode and self.last_player_lane is not None:
+            player_lane = max(0, min(NUM_LANES - 1, self.last_player_lane))
+            # Force at least one car in player's lane, keep one in a different lane
+            other_lanes = [l for l in range(NUM_LANES) if l != player_lane]
+            if other_lanes:
+                lanes_to_spawn = [player_lane, random.choice(other_lanes)]
         
         # Track cars spawned in THIS pattern to check against each other
         pattern_cars = []
