@@ -37,9 +37,11 @@ class RoadFighterGame:
         self.spawn_interval = 2.33  # 280px spacing = 180px gap (1.8 car lengths)
         self.lane_marker_offset = 0
         
-        # Track last spawned car type to prevent consecutive yellow/red
+        # Track last spawned car type and lane to prevent consecutive spawns
         self.last_spawned_type = None
-        self.last_spawned_lane = None  # Track lane of last red car
+        self.last_spawned_lane_for_consecutive = None  # Track lane for consecutive spawns rule
+        self.consecutive_same_lane = 0  # Track consecutive spawns in same lane
+        self.last_red_car_lane = None  # Track lane of last red car for red spacing rule
         self.consecutive_same_type = 0  # Track consecutive spawns of same type
         
         # Lane camping prevention
@@ -66,9 +68,11 @@ class RoadFighterGame:
         self.yellow_cars_passed = 0
         self.red_cars_passed = 0
         
-        # Reset last spawned type
+        # Reset last spawned type and lane tracking
         self.last_spawned_type = None
-        self.last_spawned_lane = None
+        self.last_spawned_lane_for_consecutive = None
+        self.consecutive_same_lane = 0
+        self.last_red_car_lane = None
         self.consecutive_same_type = 0
         
         # Reset lane camping prevention
@@ -382,9 +386,17 @@ class RoadFighterGame:
             if vertical_distance < min_spacing:
                 return False  # Too close vertically - don't spawn
         
+        # RULE 1: No more than 2 cars in the same lane consecutively
+        # Check if we're about to spawn the 3rd car in the same lane
+        if self.last_spawned_lane_for_consecutive == lane and self.consecutive_same_lane >= 2:
+            # Already spawned 2 cars in this lane - must choose different lane
+            available_lanes = [l for l in range(NUM_LANES) if l != lane]
+            if available_lanes:
+                lane = random.choice(available_lanes)
+        
         # Red car horizontal spacing: check BEFORE creating car
         # Need to preview car type WITHOUT consuming random state
-        if self.last_spawned_type == 'red' and self.last_spawned_lane is not None:
+        if self.last_spawned_type == 'red' and self.last_red_car_lane is not None:
             # Save random state, create preview car, restore state
             saved_state = random.getstate()
             preview_car = OpponentCar(lane, 0, 0)
@@ -393,35 +405,46 @@ class RoadFighterGame:
             
             if will_be_red:
                 # Both current and next are red - ensure 2 lanes apart
-                lane_distance = abs(lane - self.last_spawned_lane)
+                lane_distance = abs(lane - self.last_red_car_lane)
                 if lane_distance < 2:
                     # Too close - pick opposite side
-                    if self.last_spawned_lane <= 1:
+                    if self.last_red_car_lane <= 1:
                         lane = random.choice([2, 3])
                     else:
                         lane = random.choice([0, 1])
         
-        # Prevent more than 2 consecutive red or yellow cars
-        # If we've had 2 consecutive of same type, force green
-        force_green = False
-        if self.consecutive_same_type >= 2 and self.last_spawned_type in ['red', 'yellow']:
-            force_green = True
+        # RULE 2: No more than 2 consecutive cars of the same color
+        # If we've had 2 consecutive of same type (ANY color), force a DIFFERENT type
+        force_different_type = False
+        if self.consecutive_same_type >= 2:
+            force_different_type = True
         
         # Random spawn - maintains 5:3:2 ratio (green:yellow:red)
-        if force_green:
-            new_car = OpponentCar(lane, 0, 0, force_type='green')
+        if force_different_type:
+            # Pick a random color that's NOT the last spawned type
+            available_types = [t for t in ['green', 'yellow', 'red'] if t != self.last_spawned_type]
+            forced_type = random.choice(available_types)
+            new_car = OpponentCar(lane, 0, 0, force_type=forced_type)
         else:
             new_car = OpponentCar(lane, 0, 0)
         
-        # Update consecutive counter
+        # Update consecutive type counter (for color rule)
         if new_car.car_type == self.last_spawned_type:
             self.consecutive_same_type += 1
         else:
             self.consecutive_same_type = 1
         
+        # Update consecutive lane counter (for lane rule)
+        if lane == self.last_spawned_lane_for_consecutive:
+            self.consecutive_same_lane += 1
+        else:
+            self.consecutive_same_lane = 1
+        
+        # Update tracking variables
         self.last_spawned_type = new_car.car_type
+        self.last_spawned_lane_for_consecutive = lane
         if new_car.car_type == 'red':
-            self.last_spawned_lane = lane
+            self.last_red_car_lane = lane
         
         self.opponents.append(new_car)
         return True  # Successfully spawned
@@ -482,9 +505,37 @@ class RoadFighterGame:
                 vertical_offset = -(i * 280)
                 horizontal_variance = 0  # No variance - keep cars centered in lanes
                 
-                # Random spawn - maintains natural 5:3:2 ratio
-                new_car = OpponentCar(lane, vertical_offset, horizontal_variance)
+                # RULE 2: Apply same-color rule (same as single car spawns)
+                force_different_type = False
+                if self.consecutive_same_type >= 2:
+                    force_different_type = True
+                
+                # Random spawn - maintains natural 5:3:2 ratio, but enforce color rule
+                if force_different_type:
+                    # Pick a random color that's NOT the last spawned type
+                    available_types = [t for t in ['green', 'yellow', 'red'] if t != self.last_spawned_type]
+                    forced_type = random.choice(available_types)
+                    new_car = OpponentCar(lane, vertical_offset, horizontal_variance, force_type=forced_type)
+                else:
+                    new_car = OpponentCar(lane, vertical_offset, horizontal_variance)
+                
+                # Update consecutive type counter (for color rule)
+                if new_car.car_type == self.last_spawned_type:
+                    self.consecutive_same_type += 1
+                else:
+                    self.consecutive_same_type = 1
+                
+                # Update consecutive lane counter (for lane rule)
+                if lane == self.last_spawned_lane_for_consecutive:
+                    self.consecutive_same_lane += 1
+                else:
+                    self.consecutive_same_lane = 1
+                
+                # Update tracking variables
                 self.last_spawned_type = new_car.car_type
+                self.last_spawned_lane_for_consecutive = lane
+                if new_car.car_type == 'red':
+                    self.last_red_car_lane = lane
                 
                 self.opponents.append(new_car)
                 pattern_cars.append(new_car)  # Track for checking against next car in pattern
