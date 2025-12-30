@@ -22,9 +22,12 @@ LANE_CENTERS = [
     ROAD_LEFT_EDGE + 3 * LANE_WIDTH + LANE_WIDTH // 2
 ]
 
+
 # Player car dimensions (define before using in PLAYER_START_X)
 PLAYER_WIDTH = 60
 PLAYER_HEIGHT = 100
+CAR_WIDTH = PLAYER_WIDTH
+CAR_HEIGHT = PLAYER_HEIGHT
 
 # Player car position (centered in lane, positioned at bottom with 0.5 car height gap)
 PLAYER_START_X = LANE_CENTERS[1] - PLAYER_WIDTH // 2  # Center the car in lane
@@ -59,7 +62,9 @@ COLOR_ROAD = (45, 45, 45)
 COLOR_GRASS = (34, 139, 34)
 COLOR_LANE_MARKER = (255, 255, 255)
 COLOR_ROAD_EDGE = (255, 255, 0)
-COLOR_PLAYER = (255, 0, 0)
+COLOR_PLAYER = (0, 0, 139) # Dark Blue
 COLOR_OPPONENT_GREEN = (0, 255, 0)
 COLOR_OPPONENT_YELLOW = (255, 255, 0)
 COLOR_OPPONENT_RED = (255, 100, 100)
+COLOR_OPPONENT = COLOR_OPPONENT_RED # Default fallback
+COLOR_TEXT = (255, 255, 255) # White text

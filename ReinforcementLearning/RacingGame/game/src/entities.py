@@ -4,7 +4,7 @@ Road Fighter - Game Entities
 
 import pygame
 import random
-from constants import *
+from .constants import *
 
 
 class Car:

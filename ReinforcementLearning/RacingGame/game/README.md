@@ -4,10 +4,12 @@ A Python port of the Road Fighter racing game.
 
 ## Files
 
-- `constants.py` - All game constants (screen size, physics, colors, etc.)
-- `entities.py` - PlayerCar and OpponentCar classes
-- `game_engine.py` - Main game loop and logic
-- `play.py` - Run to play the game
+- `src/constants.py` - All game constants (screen size, physics, colors, etc.)
+- `src/entities.py` - PlayerCar and OpponentCar classes
+- `src/core.py` - Main game logic (headless)
+- `src/renderer.py` - Pygame rendering
+- `src/main.py` - Launcher for human play
+- `src/gym_env.py` - Gymnasium wrapper for RL
 
 ## Setup
 
@@ -28,48 +30,37 @@ python play.py
 
 **Goal:** Reach 9500m in 120 seconds
 
-## Game Mechanics
+## Run Tests
+To run all tests (includes logic, ML integration, and game rules):
+```bash
+python -m unittest discover tests
+```
 
-### Player Car
-- Starts at 150 km/h
-- Auto-accelerates to 300 km/h max
-- Can brake down to 50 km/h min
-- Moves in half-lane increments
-- Slows down on collision
+To see the **list of individual tests** being run (Verbose mode):
+```bash
+python -m unittest discover tests -v
+```
 
-### Opponent Cars
-- Travel at 180 km/h
-- Spawn in random lanes
-- Three colors (green, yellow, red)
-- Spawn rate increases with distance
+## ML Training
 
-### Winning
-- Reach 9500m before time runs out
-- Avoid collisions to maintain speed
+To use the environment in your training script:
+
+```python
+from src.gym_env import RacingGameEnv
+
+env = RacingGameEnv()
+# ... training loop ...
+```
 
 ## Code Structure
 
-The game is organized into:
+The game is organized into the `src/` package:
 
-1. **constants.py** - Configuration
-   - Screen dimensions
-   - Physics parameters
-   - Colors
-   - Game rules
-
-2. **entities.py** - Game objects
-   - `PlayerCar` - Player-controlled car with lane changing
-   - `OpponentCar` - AI traffic cars
-
-3. **game_engine.py** - Game logic
-   - `RoadFighterGame` - Main game class
-   - Update loop
-   - Collision detection
-   - Spawning system
-   - Rendering
-
-4. **play.py** - Entry point
-   - Creates and runs the game
+1. **src/constants.py** - Configuration
+2. **src/entities.py** - Game objects (`PlayerCar`, `OpponentCar`)
+3. **src/core.py** - Logic (`RoadFighterGame` class)
+4. **src/renderer.py** - Visuals (`GameRenderer` class)
+5. **src/gym_env.py** - RL Interface
 
 ## Game State
 
@@ -81,8 +72,4 @@ The game tracks:
 - Score
 - Collision detection
 
-You can access these from `game_engine.py` for building ML on top of this.
-
-## Next Steps
-
-Now you can build your own ML solution on top of this game! The game provides all the mechanics - you add the intelligence.
+You can access these from `src/core.py` for building ML on top of this.
