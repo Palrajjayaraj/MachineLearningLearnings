@@ -48,7 +48,9 @@ class TestMLIntegration(unittest.TestCase):
         state = self.game.get_state()
         
         # Verify vector shape
-        self.assertEqual(len(state), 20)
+        # Verify state shape
+        # State V3 Size: 32 (Player[4] + Global[3] + 5*Objects[5])
+        self.assertEqual(len(state), 32)
         
         # Verify value ranges (all extracted features should be normalized)
         for i, val in enumerate(state):

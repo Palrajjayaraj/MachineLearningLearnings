@@ -9,12 +9,13 @@ class RacingGameEnv(gym.Env):
     
     metadata = {"render_modes": ["human"], "render_fps": 60}
     
-    def __init__(self, render_mode=None):
+    def __init__(self, render_mode=None, frame_skip=4):
         super().__init__()
         # Core Game Logic (Headless)
         self.game = RoadFighterGame()
         self.render_mode = render_mode
         self.renderer = None
+        self.frame_skip = frame_skip
         
         # Initialize Renderer only if needed
         if self.render_mode == "human":
@@ -24,9 +25,11 @@ class RacingGameEnv(gym.Env):
         # Define action space: 0=nothing, 1=left, 2=right, 3=brake
         self.action_space = spaces.Discrete(4)
         
-        # Define observation space: 20 continuous features [0, 1]
+        # Define observation space: 32 continuous features (State V3)
+        # Player[4] + Global[3] + 5 * Objects[5]
+        # Range includes negative relative coordinates, so use ample bounds
         self.observation_space = spaces.Box(
-            low=0.0, high=1.0, shape=(20,), dtype=np.float32
+            low=-3.0, high=3.0, shape=(32,), dtype=np.float32
         )
     
     def reset(self, seed=None, options=None):
@@ -40,37 +43,41 @@ class RacingGameEnv(gym.Env):
         right = (action == 2)
         brake = (action == 3)
         
-        # Step the core logic
-        state, raw_reward, done, info = self.game.step(left, right, brake)
-        
-        # ML Reward Shaping (moved from Engine to Here)
-        # This keeps the engine pure and allows experimenting with rewards here
-        
-        # 1. Base reward from engine (distance based)
-        reward = raw_reward
-        
-        # 2. Add extra shaping logic here if needed
-        # (Initially matching original logic)
-        
-        # 3. Penalties from core tracking
-        if self.game.lane_camping_mode:
-            reward -= 0.5
-        
-        if self.game.player.is_changing_lane:
-            reward -= 0.05
-            
-        # Passing bonus constraint check
-        # (Core engine adds this to 'score' or similar usually, 
-        # but if we want RL specific bonus we can track diff)
-        
+        total_reward = 0.0
+        terminated = False
         truncated = False
+        final_info = {}
+        
+        # Frame Skipping Loop
+        # If frame_skip=1, this loop runs once (Standard 60Hz)
+        # If frame_skip=4, this loop runs 4 times (15Hz)
+        for _ in range(self.frame_skip):
+            # Step the core logic
+            state, raw_reward, done, info = self.game.step(left, right, brake)
+            
+            # 1. Base reward from engine
+            reward = raw_reward
+            
+            # 2. Penalties from core tracking
+            if self.game.lane_camping_mode:
+                reward -= 0.5
+            
+            if self.game.player.is_changing_lane:
+                reward -= 0.05
+                
+            total_reward += reward
+            final_info = info # Keep latest info
+            
+            if done:
+                terminated = True
+                break
         
         return (
             np.array(state, dtype=np.float32),
-            float(reward),
-            done,
+            float(total_reward),
+            terminated,
             truncated,
-            info
+            final_info
         )
     
     def render(self):

@@ -5,6 +5,7 @@ Road Fighter - Requirements Specification
 ----------------------
 *   **Goal**: Reach the finish line (9500m) within the time limit (120s).
 *   **Failure Conditions**:
+    *   **Failure Conditions**:
     *   Running out of time.
     *   Crashing into an opponent car.
 *   **Controls**:
@@ -66,3 +67,26 @@ This multiplier affects Opponent Speed (Vertical) and Zig-Zag Speed (Horizontal)
 ---------------------
 *   **Velocity**: Handled internally in `m/s` derived from `km/h` (Vel / 3.6).
 *   **Duration**: A perfect run (Max speed 300km/h constant) should take approxiately **114 seconds**.
+
+7. AI / ML Interface
+--------------------
+The game provides a Gymnasium Environment (`src.gym_env.RacingGameEnv`) for Reinforcement Learning.
+
+*   **Configuration**:
+    *   `frame_skip`: (int) Default 4. Number of physics frames to advance per action.
+
+*   **Observation Space**: Box(32,) - A vector of 32 normalized continuous values.
+    1.  **Player (4)**: `[X, Vel_Y, Lane, is_Changing]`
+    2.  **Global (3)**: `[Time, Progress, Multiplier]`
+    3.  **Neighbors (5x5)**: The 5 nearest cars, each with:
+        *   `Relative X` (Distance normalized to screen width)
+        *   `Relative Y` (Distance normalized to screen height)
+        *   `Type ID` (0.0=Green, 0.5=Yellow, 1.0=Red)
+        *   `Velocity X` (Direction: -1=Left, 0=Straight, 1=Right)
+        *   `Relative Velocity Y` (Closing Speed: +ve = Approaching fast)
+
+*   **Action Space**: Discrete(4)
+    *   0: Do Nothing
+    *   1: Steer Left
+    *   2: Steer Right
+    *   3: Brake

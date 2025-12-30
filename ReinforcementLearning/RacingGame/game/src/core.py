@@ -101,8 +101,12 @@ class RoadFighterGame:
         # Update Game Logic
         self.update(dt, left, right, brake)
         
-        # Calculate Reward (Logic side)
-        reward = self.distance_traveled * 0.01  
+        # Calculate Reward (Step Based)
+        # Reward should be proportional to distance covered THIS STEP
+        # distance_delta = (velocity_y / 3.6) * dt
+        # 3.6 is the conversion factor to convert km/h to m/s (1000m / 3600s)
+        distance_delta = (self.player.velocity_y / 3.6) * dt
+        reward = distance_delta * 0.1 # 10m/s -> 1.0 reward per frame roughly
         
         done = self.game_over
         info = {
@@ -366,59 +370,68 @@ class RoadFighterGame:
         return False
 
     def get_state(self):
-        # Implementation of full state extraction port
+        # State V3: Enhanced Object Awareness
+        # Size: 32 (Player[4] + Global[3] + 5 * Car[5])
+        
         state = []
         player = self.player
         
-        # Player features
+        # 1. Player features [4]
         state.extend([
-            player.x / SCREEN_WIDTH,
-            player.velocity_y / PLAYER_MAX_SPEED,
-            player.current_lane / (NUM_LANES - 1),
-            1.0 if player.is_changing_lane else 0.0
+            player.x / SCREEN_WIDTH,                 # Normalized X
+            player.velocity_y / PLAYER_MAX_SPEED,    # Normalized Speed
+            player.current_lane / (NUM_LANES - 1),   # Lane Index
+            1.0 if player.is_changing_lane else 0.0  # Lane Change Flag
         ])
         
-        # Progress
+        # 2. Global Progress [3]
+        current_mult = self._get_speed_multiplier()
         state.extend([
-            self.time_remaining / 60.0,
-            min(self.distance_traveled / 10000.0, 1.0)
+            self.time_remaining / RACE_TIME_LIMIT,
+            min(self.distance_traveled / TARGET_DISTANCE, 1.0),
+            current_mult / 2.0  # Normalized Multiplier (1.0-2.0 -> 0.5-1.0)
         ])
         
-        # Opponents
-        for lane_idx in range(NUM_LANES):
-            lane_x = ROAD_LEFT_EDGE + LANE_WIDTH * lane_idx + LANE_WIDTH // 2
-            closest_dist = 1.0
-            closest_speed = 0.0
-            has_car = 0.0
-            
-            for opp in self.opponents:
-                # Check if car is roughly in this lane (accounting for transitions)
-                if abs(opp.x - lane_x) < LANE_WIDTH / 2:
-                    if opp.y < player.y: # Only cars ahead
-                        dist = (player.y - opp.y) / SCREEN_HEIGHT
-                        if dist < closest_dist:
-                            closest_dist = dist
-                            # Speed is base (120) * multiplier
-                            current_speed_mult = self._get_speed_multiplier()
-                            opp_speed = 120 * current_speed_mult
-                            closest_speed = opp_speed / -300
-                            has_car = 1.0
-            
-            state.extend([closest_dist, closest_speed, has_car])
-            
-        # Danger
-        immediate_danger = 0.0
-        near_danger = 0.0
-        player_lane_x = ROAD_LEFT_EDGE + LANE_WIDTH * player.current_lane + LANE_WIDTH // 2
-        
+        # 3. Nearest Opponents (KNN) [5 * 5 = 25]
+        opp_data = []
         for opp in self.opponents:
-            # Check horizontal overlap
-            if abs(opp.x - player.x) < LANE_WIDTH * 0.8:
-                dist = player.y - opp.y
-                if 0 < dist < 150: # Immediate danger
-                    immediate_danger = 1.0
-                elif 0 < dist < 300: # Near danger
-                    near_danger = 1.0
-                    
-        state.extend([immediate_danger, near_danger])
+            if not opp.active: continue
+            
+            # Relative Position
+            dx = (opp.x - player.x) / SCREEN_WIDTH
+            dy = (opp.y - player.y) / SCREEN_HEIGHT
+            dist = (dx*dx + dy*dy)**0.5
+            
+            # Type Encoding
+            type_val = 0.0
+            if opp.car_type == 'yellow': type_val = 0.5
+            elif opp.car_type == 'red': type_val = 1.0
+            
+            # Direction/Vel X
+            dir_val = float(opp.movement_direction)
+            
+            # Relative Velocity Y (Opponent Screen Speed)
+            # Calculated as (120 * Mult) / Max_Speed_Reference (~300)
+            # Negative because they move "down" towards player? 
+            # Actually they move +Y (down screen). Player is fixed.
+            # So they effectively have speed +Y.
+            opp_speed_y = (120 * current_mult) / 300.0
+            
+            opp_data.append({
+                'dist': dist,
+                'features': [dx, dy, type_val, dir_val, opp_speed_y]
+            })
+            
+        # Sort by distance
+        opp_data.sort(key=lambda x: x['dist'])
+        
+        # Take nearest 5
+        k = 5
+        for i in range(k):
+            if i < len(opp_data):
+                state.extend(opp_data[i]['features'])
+            else:
+                # Padding: Far away, no speed
+                state.extend([0.0, -2.0, 0.0, 0.0, 0.0]) 
+                
         return state

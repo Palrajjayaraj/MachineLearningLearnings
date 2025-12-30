@@ -77,5 +77,31 @@ class TestMovementSpeed(unittest.TestCase):
         self.assertAlmostEqual(dist, 20.0, delta=0.1, msg="Speed should double with 2.0x multiplier")
         print(f"Yellow (2.0x) moved: {dist:.2f} px")
 
+    def test_vertical_speed_scaling(self):
+        """Verify Vertical Approaching Speed scales with Multiplier"""
+        # Base speed in entities.py is 120 px/s
+        dt = 0.1
+        
+        # Case A: 1.0x Multiplier
+        car_a = OpponentCar(lane=1)
+        start_y = car_a.y
+        car_a.update(dt, 0, 1.0) # Speed 1.0x
+        dist_a = car_a.y - start_y
+        
+        # Expected: 120 * 1.0 * 0.1 = 12.0
+        self.assertAlmostEqual(dist_a, 12.0, delta=0.1, msg=f"Vertical 1.0x should be 12.0px, got {dist_a}")
+        
+        # Case B: 2.0x Multiplier
+        car_b = OpponentCar(lane=1)
+        start_y = car_b.y
+        car_b.update(dt, 0, 2.0) # Speed 2.0x
+        dist_b = car_b.y - start_y
+        
+        # Expected: 120 * 2.0 * 0.1 = 24.0
+        self.assertAlmostEqual(dist_b, 24.0, delta=0.1, msg=f"Vertical 2.0x should be 24.0px, got {dist_b}")
+        
+        print(f"Vertical Speed 1.0x: {dist_a/dt:.1f} px/s")
+        print(f"Vertical Speed 2.0x: {dist_b/dt:.1f} px/s")
+
 if __name__ == '__main__':
     unittest.main()
