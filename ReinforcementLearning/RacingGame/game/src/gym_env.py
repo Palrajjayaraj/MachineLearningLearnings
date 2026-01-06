@@ -58,10 +58,7 @@ class RacingGameEnv(gym.Env):
             # 1. Base reward from engine
             reward = raw_reward
             
-            # 2. Penalties from core tracking
-            if self.game.lane_camping_mode:
-                reward -= 0.5
-            
+            # 2. Penalties from core tracking     
             if self.game.player.is_changing_lane:
                 reward -= 0.05
                 
@@ -70,6 +67,15 @@ class RacingGameEnv(gym.Env):
             
             if done:
                 terminated = True
+                
+                # 3. Termination Rewards/Penalties
+                if self.game.end_reason == 'collision':
+                    reward -= 100.0
+                elif self.game.end_reason == 'victory':
+                    reward += 100.0
+                # Timeout gets no special penalty, just ends the episode
+                
+                total_reward += reward
                 break
         
         return (
@@ -82,6 +88,8 @@ class RacingGameEnv(gym.Env):
     
     def render(self):
         if self.render_mode == "human" and self.renderer:
+            # Process window events to keep UI responsive
+            pygame.event.pump()
             self.renderer.render(self.game)
     
     def close(self):

@@ -99,14 +99,15 @@ class RoadFighterGame:
         dt = 1/60.0
         
         # Update Game Logic
+        old_bonus = self.passing_bonus
         self.update(dt, left, right, brake)
+        bonus_delta = self.passing_bonus - old_bonus
         
         # Calculate Reward (Step Based)
-        # Reward should be proportional to distance covered THIS STEP
-        # distance_delta = (velocity_y / 3.6) * dt
-        # 3.6 is the conversion factor to convert km/h to m/s (1000m / 3600s)
+        # Reward = Distance (10m/s -> 1.0) + Passing Bonus (2.0 per car)
         distance_delta = (self.player.velocity_y / 3.6) * dt
-        reward = distance_delta * 0.1 # 10m/s -> 1.0 reward per frame roughly
+        reward = (distance_delta * 0.1) + bonus_delta
+        
         
         done = self.game_over
         info = {
@@ -366,8 +367,8 @@ class RoadFighterGame:
         player_rect = self.player.get_rect()
         for opp in self.opponents:
             if player_rect.colliderect(opp.get_rect()):
-                return True
-        return False
+                return opp
+        return None
 
     def get_state(self):
         # State V3: Enhanced Object Awareness
