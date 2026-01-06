@@ -7,7 +7,8 @@ import time
 # =========================================================
 # CONFIGURATION
 # =========================================================
-MODEL_PATH = "models/road_fighter_ppo_final"
+BASE_MODEL_TRAINING_DIR_NAME = "modelTraining"
+MODEL_PATH = os.path.join(BASE_MODEL_TRAINING_DIR_NAME, "models", "road_fighter_ppo_final")
 FRAME_SKIP = 4
 
 def main():

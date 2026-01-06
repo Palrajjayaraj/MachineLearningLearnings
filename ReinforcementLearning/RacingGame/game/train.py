@@ -2,16 +2,23 @@ import gymnasium as gym
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.logger import configure
 from src.gym_env import RacingGameEnv
 import os
 
 # =========================================================
+# =========================================================
 # CONFIGURATION
 # =========================================================
-TOTAL_TIMESTEPS = 1_000_000
+BASE_DIR = "modelTraining"
+LOG_DIR = os.path.join(BASE_DIR, "logs")
+MODEL_DIR = os.path.join(BASE_DIR, "models")
+
+TOTAL_TIMESTEPS = 1_00_000
 CHECK_FREQ = 10_000  # Steps (not episodes) to verify/render
 FRAME_SKIP = 4
-MODEL_PATH = "models/road_fighter_ppo"
+MODEL_PATH = os.path.join(MODEL_DIR, "road_fighter_ppo")
+
 
 class PeriodicRenderCallback(BaseCallback):
     """
@@ -50,7 +57,69 @@ class PeriodicRenderCallback(BaseCallback):
             
         return True
 
+import csv
+import datetime
+
+class CSVLoggingCallback(BaseCallback):
+    """
+    Logs episode results to a CSV file.
+    """
+    def __init__(self, log_dir: str, verbose=1):
+        super().__init__(verbose)
+        self.log_dir = log_dir
+        self.log_path = os.path.join(log_dir, "training_log.csv")
+        # Ensure log dir exists
+        os.makedirs(log_dir, exist_ok=True)
+        
+        # Initialize CSV with headers if it doesn't exist
+        if not os.path.exists(self.log_path):
+            with open(self.log_path, mode='w', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(["Timestamp", "Step", "EpisodeLen", "Reward", "Distance", "Score", "EndReason", "Victory"])
+        
+        # Track last step to calculate duration
+        self.last_step = 0
+
+    def _on_step(self) -> bool:
+        # Check if any episode ended
+        # 'dones' is a boolean array for vectorized envs
+        dones = self.locals.get("dones", [False])
+        infos = self.locals.get("infos", [{}])
+        
+        current_step = self.num_timesteps
+        
+        for idx, done in enumerate(dones):
+            if done:
+                info = infos[idx]
+                
+                # Calculate Duration
+                # We assume single env for simplicity of this calc, or we track per-env.
+                # Since n_envs=1, this is simple.
+                episode_len = current_step - self.last_step
+                self.last_step = current_step
+                
+                # Extract stats
+                reward = info.get('episode', {}).get('r', 0) # Total reward from Monitor wrapper if present
+                
+                distance = info.get('distance', 0)
+                score = info.get('score', 0)
+                end_reason = info.get('end_reason', 'unknown')
+                victory = info.get('victory', False)
+                ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                
+                with open(self.log_path, mode='a', newline='') as f:
+                    writer = csv.writer(f)
+                    writer.writerow([ts, current_step, episode_len, f"{reward:.2f}", f"{distance:.1f}", score, end_reason, victory])
+                    
+        return True
+
 def main():
+    # 0. Clean up logs
+    if os.path.exists(LOG_DIR):
+        import shutil
+        print(f"🧹 Cleaning up old logs in {LOG_DIR}...")
+        shutil.rmtree(LOG_DIR)
+
     # 1. Create Headless Training Environment
     # We use a Vectorized Environment for efficiency (allows parallel training if needed)
     # For now, 1 env is fine.
@@ -62,45 +131,46 @@ def main():
     
     if os.path.exists(final_model_path):
         print(f"🔄 Resuming training from: {final_model_path}")
-        # Load the model, attaching the new environment
-        # We pass other parameters (ent_coef, etc.) via custom_objects or keyword args if we wanted to change them,
-        # but usually loading preserves the core policy. 
-        # However, to be safe with hyperparameters like learning_rate if we changed them, we can set them.
-        # Simple load is best for now.
         model = PPO.load(
             final_model_path, 
             env=train_env,
-            tensorboard_log="./logs/" # Ensure logging continues
+            tensorboard_log=LOG_DIR 
         )
-        
-        # NOTE: If we drastically changed hyperparameters (like batch_size), 
-        # PPO.load might stick to the old ones saved in the zip.
-        # But for 'Continuing', this is fine.
-        
     else:
         print("✨ Starting New Training Session")
-        # MlpPolicy is standard for vector inputs (State V3)
         model = PPO(
             "MlpPolicy", 
             train_env, 
             verbose=1,
             learning_rate=3e-4,
-            ent_coef=0.01, # Encourage exploration
-            batch_size=256,    # <--- NEW: Bigger chunks
-            n_epochs=20,       # <--- NEW: Study harder
-            tensorboard_log="./logs/"
+            ent_coef=0.01, 
+            batch_size=256,   
+            n_epochs=20,       
+            tensorboard_log=LOG_DIR
         )
 
     print("Starting Training... (Headless)")
     print(f" visualization will occur every {CHECK_FREQ} steps.")
+    print(f" Logging to {LOG_DIR}/training_log.csv (Episodes) and {LOG_DIR}/progress.csv (Training Stats)")
+    
+    # Configure Logger to write to CSV
+    # This captures the 'ep_len_mean', 'loss', etc.
+    new_logger = configure(LOG_DIR, ["stdout", "csv", "tensorboard"])
+    model.set_logger(new_logger)
 
     # 3. Train with Callback
-    if not os.path.exists("models"):
-        os.makedirs("models")
+    if not os.path.exists(MODEL_DIR):
+        os.makedirs(MODEL_DIR)
+        
+    # Combine callbacks
+    callbacks = [
+        PeriodicRenderCallback(check_freq=CHECK_FREQ),
+        CSVLoggingCallback(log_dir=LOG_DIR)
+    ]
         
     model.learn(
         total_timesteps=TOTAL_TIMESTEPS, 
-        callback=PeriodicRenderCallback(check_freq=CHECK_FREQ)
+        callback=callbacks
     )
     
     # 4. Save Final Model

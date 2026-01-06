@@ -113,7 +113,8 @@ class RoadFighterGame:
         info = {
             'victory': self.victory,
             'distance': self.distance_traveled,
-            'score': self.score
+            'score': self.score,
+            'end_reason': self.end_reason
         }
         
         return self.get_state(), reward, done, info
