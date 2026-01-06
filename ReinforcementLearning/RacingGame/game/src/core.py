@@ -46,6 +46,10 @@ class RoadFighterGame:
         self.passing_bonus = 0
         self.total_cars_spawned = 0
         
+        # Collision Penalty Tracking
+        self.collision_penalty = 0
+        self.collision_car_type = None
+        
         # Logic - Spawn Constraint Tracking
         self.last_spawned_type = None
         self.consecutive_same_type = 0
@@ -89,6 +93,9 @@ class RoadFighterGame:
         self.consecutive_same_lane = 0
         self.last_red_car_lane = None
         
+        self.collision_penalty = 0
+        self.collision_car_type = None
+        
         # Reward Control
         self.rewards_active = False
         
@@ -125,6 +132,10 @@ class RoadFighterGame:
         
         
         done = self.game_over
+        
+        # Apply collision penalty if game ended due to collision
+        if done and self.end_reason == 'collision':
+            reward += self.collision_penalty
         info = {
             'victory': self.victory,
             'distance': self.distance_traveled,
@@ -203,7 +214,16 @@ class RoadFighterGame:
             if old_y < self.player.y and opp.y >= self.player.y:
                 if not hasattr(opp, 'passed_counted') or not opp.passed_counted:
                     opp.passed_counted = True
-                    self.passing_bonus += 2.0
+                    # Variable reward based on car difficulty:
+                    # Green (slowest/easiest): +2.0
+                    # Yellow (medium): +3.0
+                    # Red (fastest/hardest): +5.0
+                    if opp.car_type == 'green':
+                        self.passing_bonus += 2.0
+                    elif opp.car_type == 'yellow':
+                        self.passing_bonus += 3.0
+                    elif opp.car_type == 'red':
+                        self.passing_bonus += 5.0
                     self._update_cars_passed_stats(opp)
                     self._check_camping_logic()
 
@@ -211,10 +231,23 @@ class RoadFighterGame:
         self.opponents = [opp for opp in self.opponents if opp.y < SCREEN_HEIGHT + 100]
 
         # 7. Collisions
-        if self._check_collisions():
+        collided_car = self._check_collisions()
+        if collided_car:
             self.game_over = True
             self.victory = False
             self.end_reason = 'collision'
+            
+            # Apply variable collision penalty based on car difficulty:
+            # Green (easiest to avoid): -50 (worst penalty)
+            # Yellow (medium): -30 (medium penalty)
+            # Red (hardest to avoid): -10 (lowest penalty)
+            if collided_car.car_type == 'green':
+                self.collision_penalty = -50.0
+            elif collided_car.car_type == 'yellow':
+                self.collision_penalty = -30.0
+            elif collided_car.car_type == 'red':
+                self.collision_penalty = -10.0
+            self.collision_car_type = collided_car.car_type
 
     def _get_speed_multiplier(self):
         return 1.0 + min(self.elapsed_time / 60.0, 1.0)

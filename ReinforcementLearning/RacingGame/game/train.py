@@ -14,7 +14,7 @@ BASE_DIR = "modelTraining"
 LOG_DIR = os.path.join(BASE_DIR, "logs")
 MODEL_DIR = os.path.join(BASE_DIR, "models")
 
-TOTAL_TIMESTEPS = 1_00_000
+TOTAL_TIMESTEPS = 5_000_000
 CHECK_FREQ = 10_000  # Steps (not episodes) to verify/render
 FRAME_SKIP = 4
 MODEL_PATH = os.path.join(MODEL_DIR, "road_fighter_ppo")
