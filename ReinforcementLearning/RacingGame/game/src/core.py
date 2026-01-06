@@ -89,6 +89,9 @@ class RoadFighterGame:
         self.consecutive_same_lane = 0
         self.last_red_car_lane = None
         
+        # Reward Control
+        self.rewards_active = False
+        
         return self.get_state()
 
     def step(self, left, right, brake):
@@ -103,10 +106,22 @@ class RoadFighterGame:
         self.update(dt, left, right, brake)
         bonus_delta = self.passing_bonus - old_bonus
         
+        # Check if we should activate rewards (first car appearance)
+        if not self.rewards_active:
+            for opp in self.opponents:
+                if opp.y > 0: # Car has entered screen/viewport
+                    self.rewards_active = True
+                    break
+        
         # Calculate Reward (Step Based)
         # Reward = Distance (10m/s -> 1.0) + Passing Bonus (2.0 per car)
         distance_delta = (self.player.velocity_y / 3.6) * dt
-        reward = (distance_delta * 0.1) + bonus_delta
+        
+        if self.rewards_active:
+            reward = (distance_delta * 0.1) + bonus_delta
+        else:
+             # Zero reward until the action starts
+            reward = 0.0
         
         
         done = self.game_over

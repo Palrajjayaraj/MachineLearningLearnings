@@ -63,6 +63,9 @@ class TestMLIntegration(unittest.TestCase):
         print("\\nTEST: Reward Function")
         
         # Scenario 1: Normal driving
+        # Manually activate rewards to bypass startup delay
+        self.game.rewards_active = True
+        
         total_reward = 0
         for _ in range(60):
             state, reward, done, info = self.game.step(False, False, False)
