@@ -129,7 +129,12 @@ class RoadFighterGame:
             'victory': self.victory,
             'distance': self.distance_traveled,
             'score': self.score,
-            'end_reason': self.end_reason
+            'end_reason': self.end_reason,
+            'cars_passed': {
+                'green': self.green_cars_passed,
+                'yellow': self.yellow_cars_passed,
+                'red': self.red_cars_passed
+            }
         }
         
         return self.get_state(), reward, done, info

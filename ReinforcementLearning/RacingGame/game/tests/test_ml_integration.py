@@ -35,7 +35,10 @@ class TestMLIntegration(unittest.TestCase):
         # Verify basic contracts
         self.assertIsInstance(reward, float)
         self.assertIsInstance(done, bool)
+        self.assertIsInstance(reward, float)
+        self.assertIsInstance(done, bool)
         self.assertIn('distance', info)
+        self.assertIn('cars_passed', info)
 
     def test_state_extraction(self):
         """Test the get_state() method - state extraction"""

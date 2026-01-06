@@ -75,7 +75,7 @@ class CSVLoggingCallback(BaseCallback):
         if not os.path.exists(self.log_path):
             with open(self.log_path, mode='w', newline='') as f:
                 writer = csv.writer(f)
-                writer.writerow(["Timestamp", "Step", "EpisodeLen", "Reward", "Distance", "Score", "EndReason", "Victory"])
+                writer.writerow(["Timestamp", "Step", "EpisodeLen", "Reward", "Distance", "Score", "EndReason", "Victory", "GreenPassed", "YellowPassed", "RedPassed"])
         
         # Track last step to calculate duration
         self.last_step = 0
@@ -93,23 +93,27 @@ class CSVLoggingCallback(BaseCallback):
                 info = infos[idx]
                 
                 # Calculate Duration
-                # We assume single env for simplicity of this calc, or we track per-env.
-                # Since n_envs=1, this is simple.
+                # We assume single env for simplicity of this calc
                 episode_len = current_step - self.last_step
                 self.last_step = current_step
                 
                 # Extract stats
-                reward = info.get('episode', {}).get('r', 0) # Total reward from Monitor wrapper if present
-                
+                reward = info.get('episode', {}).get('r', 0)
                 distance = info.get('distance', 0)
                 score = info.get('score', 0)
                 end_reason = info.get('end_reason', 'unknown')
                 victory = info.get('victory', False)
                 ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 
+                # Extract Car Stats (Default to 0 if missing)
+                cars_passed = info.get('cars_passed', {})
+                green = cars_passed.get('green', 0)
+                yellow = cars_passed.get('yellow', 0)
+                red = cars_passed.get('red', 0)
+                
                 with open(self.log_path, mode='a', newline='') as f:
                     writer = csv.writer(f)
-                    writer.writerow([ts, current_step, episode_len, f"{reward:.2f}", f"{distance:.1f}", score, end_reason, victory])
+                    writer.writerow([ts, current_step, episode_len, f"{reward:.2f}", f"{distance:.1f}", score, end_reason, victory, green, yellow, red])
                     
         return True
 
