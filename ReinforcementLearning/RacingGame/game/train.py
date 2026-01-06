@@ -114,11 +114,36 @@ class CSVLoggingCallback(BaseCallback):
         return True
 
 def main():
-    # 0. Clean up logs
-    if os.path.exists(LOG_DIR):
-        import shutil
-        print(f"🧹 Cleaning up old logs in {LOG_DIR}...")
-        shutil.rmtree(LOG_DIR)
+    final_model_path = f"{MODEL_PATH}_final.zip"
+    resume_training = False
+    
+    # 0. User Decision Loop
+    if os.path.exists(final_model_path):
+        print(f"\n⚠️  Found existing model: {final_model_path}")
+        while True:
+            choice = input(f"Do you want to RESUME training (y) or START FRESH (n)? [y/n]: ").strip().lower()
+            if choice == 'y':
+                resume_training = True
+                print("🔄 OK, Resuming Training...")
+                break
+            elif choice == 'n':
+                resume_training = False
+                print("✨ OK, Starting Fresh Session...")
+                break
+            else:
+                print("Please enter 'y' or 'n'.")
+    else:
+        print("✨ No existing model found. Starting New Session.")
+        resume_training = False
+
+    # 0.5 Clean up logs ONLY if starting fresh
+    if not resume_training:
+        if os.path.exists(LOG_DIR):
+            import shutil
+            print(f"🧹 Cleaning up old logs in {LOG_DIR}...")
+            shutil.rmtree(LOG_DIR)
+    else:
+        print(f"📂 Keeping existing logs in {LOG_DIR} (Appending)...")
 
     # 1. Create Headless Training Environment
     # We use a Vectorized Environment for efficiency (allows parallel training if needed)
@@ -126,18 +151,28 @@ def main():
     train_env = make_vec_env(lambda: RacingGameEnv(frame_skip=FRAME_SKIP), n_envs=1)
 
     # 2. Initialize PPO Model
-    # Check if a saved model exists to resume training
-    final_model_path = f"{MODEL_PATH}_final.zip"
-    
-    if os.path.exists(final_model_path):
-        print(f"🔄 Resuming training from: {final_model_path}")
-        model = PPO.load(
-            final_model_path, 
-            env=train_env,
-            tensorboard_log=LOG_DIR 
-        )
+    if resume_training:
+        try:
+            model = PPO.load(
+                final_model_path, 
+                env=train_env,
+                tensorboard_log=LOG_DIR 
+            )
+            print("✅ Model loaded successfully.")
+        except Exception as e:
+            print(f"❌ Error loading model: {e}")
+            print("Falling back to new model.")
+            model = PPO(
+                "MlpPolicy", 
+                train_env, 
+                verbose=1,
+                learning_rate=3e-4,
+                ent_coef=0.01, 
+                batch_size=256,   
+                n_epochs=20,       
+                tensorboard_log=LOG_DIR
+            )
     else:
-        print("✨ Starting New Training Session")
         model = PPO(
             "MlpPolicy", 
             train_env, 
