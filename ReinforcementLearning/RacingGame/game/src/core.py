@@ -238,15 +238,15 @@ class RoadFighterGame:
             self.end_reason = 'collision'
             
             # Apply variable collision penalty based on car difficulty:
-            # Green (easiest to avoid): -50 (worst penalty)
-            # Yellow (medium): -30 (medium penalty)
-            # Red (hardest to avoid): -10 (lowest penalty)
+            # Green (easiest to avoid): -5.0 (worst penalty)
+            # Yellow (medium): -3.0 (medium penalty)
+            # Red (hardest to avoid): -1.0 (lowest penalty)
             if collided_car.car_type == 'green':
-                self.collision_penalty = -50.0
+                self.collision_penalty = -5.0
             elif collided_car.car_type == 'yellow':
-                self.collision_penalty = -30.0
+                self.collision_penalty = -3.0
             elif collided_car.car_type == 'red':
-                self.collision_penalty = -10.0
+                self.collision_penalty = -1.0
             self.collision_car_type = collided_car.car_type
 
     def _get_speed_multiplier(self):

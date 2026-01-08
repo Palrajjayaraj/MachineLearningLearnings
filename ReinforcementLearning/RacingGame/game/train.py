@@ -5,6 +5,8 @@ from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.logger import configure
 from src.gym_env import RacingGameEnv
 import os
+import signal
+import sys
 
 # =========================================================
 # =========================================================
@@ -14,9 +16,10 @@ BASE_DIR = "modelTraining"
 LOG_DIR = os.path.join(BASE_DIR, "logs")
 MODEL_DIR = os.path.join(BASE_DIR, "models")
 
-TOTAL_TIMESTEPS = 5_000_000
+TOTAL_TIMESTEPS = 50_000_000  # Overnight: 50M steps for better learning
 CHECK_FREQ = 10_000  # Steps (not episodes) to verify/render
-FRAME_SKIP = 4
+FRAME_SKIP = 8  # Increased from 4 to reduce zigzagging and speed up simulation
+CHECKPOINT_FREQ = 1_000_000  # Save checkpoint every 1M steps
 MODEL_PATH = os.path.join(MODEL_DIR, "road_fighter_ppo")
 
 
@@ -59,6 +62,24 @@ class PeriodicRenderCallback(BaseCallback):
 
 import csv
 import datetime
+
+class CheckpointCallback(BaseCallback):
+    """
+    Saves model checkpoints periodically during training.
+    """
+    def __init__(self, save_freq: int, save_path: str, verbose=1):
+        super().__init__(verbose)
+        self.save_freq = save_freq
+        self.save_path = save_path
+        self.checkpoint_count = 0
+
+    def _on_step(self) -> bool:
+        if self.n_calls % self.save_freq == 0:
+            self.checkpoint_count += 1
+            checkpoint_path = f"{self.save_path}_checkpoint_{self.checkpoint_count}"
+            self.model.save(checkpoint_path)
+            print(f"\n💾 Checkpoint saved at {self.num_timesteps} steps: {checkpoint_path}.zip\n")
+        return True
 
 class CSVLoggingCallback(BaseCallback):
     """
@@ -117,13 +138,43 @@ class CSVLoggingCallback(BaseCallback):
                     
         return True
 
+# Global variable to handle graceful shutdown
+model_to_save = None
+
+def signal_handler(sig, frame):
+    """
+    Handles Ctrl+C (SIGINT) gracefully by saving the model before exit.
+    """
+    print("\n\n🛑 Training interrupted by user (Ctrl+C)...")
+    if model_to_save is not None:
+        interrupt_path = f"{MODEL_PATH}_interrupted"
+        model_to_save.save(interrupt_path)
+        print(f"💾 Model saved to: {interrupt_path}.zip")
+        print("✅ You can resume training later by choosing 'y' when prompted.")
+    else:
+        print("⚠️ No model to save yet.")
+    sys.exit(0)
+
 def main():
+    global model_to_save
+    
+    # Register signal handler for Ctrl+C
+    signal.signal(signal.SIGINT, signal_handler)
+    
     final_model_path = f"{MODEL_PATH}_final.zip"
+    interrupted_path = f"{MODEL_PATH}_interrupted.zip"
     resume_training = False
     
     # 0. User Decision Loop
+    model_to_load = None
     if os.path.exists(final_model_path):
-        print(f"\n⚠️  Found existing model: {final_model_path}")
+        model_to_load = final_model_path
+        print(f"\n⚠️  Found existing FINAL model: {final_model_path}")
+    elif os.path.exists(interrupted_path):
+        model_to_load = interrupted_path
+        print(f"\n⚠️  Found INTERRUPTED model: {interrupted_path}")
+    
+    if model_to_load:
         while True:
             choice = input(f"Do you want to RESUME training (y) or START FRESH (n)? [y/n]: ").strip().lower()
             if choice == 'y':
@@ -150,15 +201,14 @@ def main():
         print(f"📂 Keeping existing logs in {LOG_DIR} (Appending)...")
 
     # 1. Create Headless Training Environment
-    # We use a Vectorized Environment for efficiency (allows parallel training if needed)
-    # For now, 1 env is fine.
-    train_env = make_vec_env(lambda: RacingGameEnv(frame_skip=FRAME_SKIP), n_envs=1)
+    # Use 8 parallel environments for ~8x speedup (overnight training)
+    train_env = make_vec_env(lambda: RacingGameEnv(frame_skip=FRAME_SKIP), n_envs=8)
 
     # 2. Initialize PPO Model
     if resume_training:
         try:
             model = PPO.load(
-                final_model_path, 
+                model_to_load, 
                 env=train_env,
                 tensorboard_log=LOG_DIR 
             )
@@ -171,7 +221,7 @@ def main():
                 train_env, 
                 verbose=1,
                 learning_rate=3e-4,
-                ent_coef=0.01, 
+                ent_coef=0.1, 
                 batch_size=256,   
                 n_epochs=20,       
                 tensorboard_log=LOG_DIR
@@ -182,15 +232,25 @@ def main():
             train_env, 
             verbose=1,
             learning_rate=3e-4,
-            ent_coef=0.01, 
+            ent_coef=0.1, 
             batch_size=256,   
             n_epochs=20,       
             tensorboard_log=LOG_DIR
         )
+    
+    # Set global reference for signal handler
+    model_to_save = model
 
-    print("Starting Training... (Headless)")
-    print(f" visualization will occur every {CHECK_FREQ} steps.")
-    print(f" Logging to {LOG_DIR}/training_log.csv (Episodes) and {LOG_DIR}/progress.csv (Training Stats)")
+    print("\n" + "="*60)
+    print("🚀 STARTING OVERNIGHT TRAINING")
+    print("="*60)
+    print(f"📊 Total Steps: {TOTAL_TIMESTEPS:,}")
+    print(f"🎮 Parallel Envs: 8")
+    print(f"⚡ Frame Skip: {FRAME_SKIP} (reduced zigzagging)")
+    print(f"💾 Checkpoints: Every {CHECKPOINT_FREQ:,} steps")
+    print(f"🛑 Safe Interrupt: Press Ctrl+C to save and exit")
+    print(f"📁 Logs: {LOG_DIR}/")
+    print("="*60 + "\n")
     
     # Configure Logger to write to CSV
     # This captures the 'ep_len_mean', 'loss', etc.
@@ -201,9 +261,9 @@ def main():
     if not os.path.exists(MODEL_DIR):
         os.makedirs(MODEL_DIR)
         
-    # Combine callbacks
+    # Combine callbacks - VISUALIZATION DISABLED for speed
     callbacks = [
-        PeriodicRenderCallback(check_freq=CHECK_FREQ),
+        CheckpointCallback(save_freq=CHECKPOINT_FREQ, save_path=MODEL_PATH),
         CSVLoggingCallback(log_dir=LOG_DIR)
     ]
         

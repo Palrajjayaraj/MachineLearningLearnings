@@ -73,7 +73,7 @@ class TestRewardShaping(unittest.TestCase):
                         "Red car passing bonus should be +5.0")
 
     def test_green_collision_penalty(self):
-        """Verify colliding with green car gives -50 penalty"""
+        """Verify colliding with green car gives -5.0 penalty"""
         # Place green car in collision position
         green_car = OpponentCar(self.game.player.current_lane, 0, 0, force_type='green')
         green_car.y = self.game.player.y
@@ -83,13 +83,13 @@ class TestRewardShaping(unittest.TestCase):
         _, reward, done, _ = self.game.step(False, False, False)
         
         self.assertTrue(done, "Game should end on collision")
-        self.assertEqual(self.game.collision_penalty, -50.0,
-                        "Green collision penalty should be -50.0")
+        self.assertEqual(self.game.collision_penalty, -5.0,
+                        "Green collision penalty should be -5.0")
         self.assertIn(self.game.collision_penalty, [reward, reward - (self.game.player.velocity_y / 3.6) * (1/60.0) * 0.1],
                      "Reward should include collision penalty")
 
     def test_yellow_collision_penalty(self):
-        """Verify colliding with yellow car gives -30 penalty"""
+        """Verify colliding with yellow car gives -3.0 penalty"""
         yellow_car = OpponentCar(self.game.player.current_lane, 0, 0, force_type='yellow')
         yellow_car.y = self.game.player.y
         self.game.opponents.append(yellow_car)
@@ -97,11 +97,11 @@ class TestRewardShaping(unittest.TestCase):
         _, reward, done, _ = self.game.step(False, False, False)
         
         self.assertTrue(done)
-        self.assertEqual(self.game.collision_penalty, -30.0,
-                        "Yellow collision penalty should be -30.0")
+        self.assertEqual(self.game.collision_penalty, -3.0,
+                        "Yellow collision penalty should be -3.0")
 
     def test_red_collision_penalty(self):
-        """Verify colliding with red car gives -10 penalty"""
+        """Verify colliding with red car gives -1.0 penalty"""
         red_car = OpponentCar(self.game.player.current_lane, 0, 0, force_type='red')
         red_car.y = self.game.player.y
         self.game.opponents.append(red_car)
@@ -109,8 +109,8 @@ class TestRewardShaping(unittest.TestCase):
         _, reward, done, _ = self.game.step(False, False, False)
         
         self.assertTrue(done)
-        self.assertEqual(self.game.collision_penalty, -10.0,
-                        "Red collision penalty should be -10.0")
+        self.assertEqual(self.game.collision_penalty, -1.0,
+                        "Red collision penalty should be -1.0")
 
 if __name__ == '__main__':
     unittest.main()
